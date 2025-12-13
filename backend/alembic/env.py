@@ -24,6 +24,8 @@ config = context.config
 db_url = settings.database_url
 if db_url.startswith("sqlite+aiosqlite"):
     db_url = db_url.replace("sqlite+aiosqlite", "sqlite")
+elif db_url.startswith("postgresql+asyncpg"):
+    db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
 
 # Handle local dev path (if running from backend/ and data/ is in root)
 if "sqlite:///" in db_url and "/./data/" in db_url:
