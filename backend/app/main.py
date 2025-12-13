@@ -26,7 +26,14 @@ from app.api.routers import (
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
+    print("----------------------------------------------------------------")
+    print(f"Starting {settings.app_name}...")
+    print("----------------------------------------------------------------")
     await init_db()
+    print("----------------------------------------------------------------")
+    print(f"Server is running!")
+    print(f"Access the dashboard at: http://0.0.0.0:8000")
+    print("----------------------------------------------------------------")
     yield
     # Shutdown
     pass
