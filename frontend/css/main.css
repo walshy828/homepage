@@ -344,6 +344,14 @@ a:hover {
     display: none !important;
 }
 
+.edit-mode-only {
+    display: none !important;
+}
+
+.app.edit-mode .edit-mode-only {
+    display: inline-flex !important;
+}
+
 .sr-only {
     position: absolute;
     width: 1px;

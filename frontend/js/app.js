@@ -542,6 +542,10 @@ class App {
                             <button class="btn nav-btn ${this.currentPage === 'links' ? 'btn-primary' : 'btn-ghost'}" onclick="app.showLinksPage()">Links</button>
                             <button class="btn nav-btn ${this.currentPage === 'notes' ? 'btn-primary' : 'btn-ghost'}" onclick="app.showNotesPage()">Notes</button>
                             
+                            <button class="btn btn-primary edit-mode-only" onclick="app.openWidgetDrawer()">
+                                <span class="icon">➕</span> Add Widget
+                            </button>
+
                             <button class="edit-mode-toggle btn ${this.editMode ? 'btn-primary' : 'btn-ghost'}" onclick="app.toggleEditMode()" title="${this.editMode ? 'Switch to view mode' : 'Switch to edit mode'}">
                                 ${this.editMode ? '✓ Done' : '✎ Edit'}
                             </button>
@@ -1262,7 +1266,6 @@ class App {
         const config = widget.config || {};
         let links = await api.getLinks({ widget_id: widget.id });
         // If no links assigned to this widget, show unassigned links
-        if (!links.length && !config.showOnlyAssigned) links = await api.getLinks({ unassigned: true });
         if (config.filterCategory) links = links.filter(l => l.category === config.filterCategory);
         links = links.slice(0, config.maxLinks || 10);
         // Sort by display_order
@@ -1890,6 +1893,19 @@ class App {
         const el = document.querySelector(`[data-id="${id}"]`)?.closest('.grid-stack-item');
         if (el) this.grid.removeWidget(el);
         this.showToast('Widget deleted');
+    }
+
+    async deleteLink(id) {
+        if (!confirm('Delete this link?')) return;
+        await api.deleteLink(id);
+
+        // Refresh local data state
+        this.allLinks = await api.getLinks();
+
+        this.refreshLinksWidgets();
+        // If on links page, refresh the grid there too
+        if (this.currentPage === 'links') this.renderLinksPage();
+        this.showToast('Link deleted');
     }
 
     openWidgetDrawer() {
