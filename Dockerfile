@@ -29,13 +29,15 @@ COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
 # Copy application code
+COPY backend/alembic.ini .
+COPY backend/alembic ./alembic
 COPY backend/app ./app
 COPY frontend ./static
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R appuser:appuser /app
 
-USER appuser
+# USER appuser (Commented out to allow access to /var/run/docker.sock)
 
 EXPOSE 8000
 
