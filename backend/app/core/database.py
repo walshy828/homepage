@@ -48,8 +48,17 @@ async def run_migrations():
     
     # Run migrations in a separate thread to avoid blocking event loop
     def run_upgrade():
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
+        try:
+            print("Running Alembic migrations...")
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+            print("Alembic migrations completed successfully.")
+        except Exception as e:
+            print(f"Error running Alembic migrations: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't silence the error, let it propagate but log it first
+            raise
         
     await asyncio.to_thread(run_upgrade)
 
