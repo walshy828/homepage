@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: homepage-dashboard
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://homepage:homepage@db:5432/homepage
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - WEATHER_API_KEY=${WEATHER_API_KEY:-}
+      - PROXMOX_HOST=${PROXMOX_HOST:-}
+      - PROXMOX_USER=${PROXMOX_USER:-}
+      - PROXMOX_TOKEN_NAME=${PROXMOX_TOKEN_NAME:-}
+      - PROXMOX_TOKEN_VALUE=${PROXMOX_TOKEN_VALUE:-}
+    volumes:
+      - ./data:/app/data
+      - ./backend/app:/app/app
+      - ./frontend:/app/static
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - homepage-net
+
+  db:
+    image: postgres:16-alpine
+    container_name: homepage-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=homepage
+      - POSTGRES_PASSWORD=homepage
+      - POSTGRES_DB=homepage
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U homepage" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - homepage-net
+
+volumes:
+  postgres_data:
+
+
+networks:
+  homepage-net:
+    driver: bridge
