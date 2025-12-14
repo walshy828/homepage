@@ -98,6 +98,10 @@ class Link(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
     
+    # Recent tracking
+    last_clicked: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    click_count: Mapped[int] = mapped_column(Integer, default=0)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -132,6 +136,9 @@ class Note(Base):
     
     # Tags
     tags: Mapped[list] = mapped_column(JSON, default=list)
+    
+    # Recent tracking
+    last_viewed: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

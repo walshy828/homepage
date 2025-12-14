@@ -166,6 +166,8 @@ class LinkResponse(BaseModel):
     custom_tags: List[str]
     is_pinned: bool
     display_order: int
+    last_clicked: Optional[datetime] = None
+    click_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -227,6 +229,7 @@ class NoteResponse(BaseModel):
     widget_grid_y: int
     widget_grid_w: int
     widget_grid_h: int
+    last_viewed: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

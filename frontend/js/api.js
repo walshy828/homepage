@@ -80,6 +80,7 @@ class API {
     }
     async updateLink(id, data) { return this.request(`/links/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
     async deleteLink(id) { return this.request(`/links/${id}`, { method: 'DELETE' }); }
+    async clickLink(id) { return this.request(`/links/${id}/click`, { method: 'POST' }); }
     async categorizeLinks(linkIds = [], all = false) {
         return this.request('/links/categorize', { method: 'POST', body: JSON.stringify({ link_ids: linkIds, categorize_all: all }) });
     }
@@ -94,6 +95,7 @@ class API {
     async createNote(data) { return this.request('/notes', { method: 'POST', body: JSON.stringify(data) }); }
     async updateNote(id, data) { return this.request(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
     async deleteNote(id) { return this.request(`/notes/${id}`, { method: 'DELETE' }); }
+    async viewNote(id) { return this.request(`/notes/${id}/view`, { method: 'POST' }); }
     async getIntegrationStatus() { return this.request('/integrations/status'); }
     async getDockerContainers(includeStats = true) { return this.request(`/integrations/docker?include_stats=${includeStats}`); }
     async controlDockerContainer(id, action) { return this.request(`/integrations/docker/${id}/${action}`, { method: 'POST' }); }

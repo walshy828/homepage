@@ -2,6 +2,7 @@
 Homepage Dashboard - Notes Router
 """
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ async def list_notes(
     is_code: Optional[bool] = Query(None),
     pinned_only: bool = Query(False),
     show_as_widget: Optional[bool] = Query(None),
+    sort_by: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -49,7 +51,10 @@ async def list_notes(
             )
         )
     
-    query = query.order_by(Note.is_pinned.desc(), Note.updated_at.desc())
+    if sort_by == "recent":
+        query = query.order_by(Note.last_viewed.desc().nulls_last(), Note.updated_at.desc())
+    else:
+        query = query.order_by(Note.is_pinned.desc(), Note.updated_at.desc())
     
     result = await db.execute(query)
     return result.scalars().all()
@@ -169,3 +174,27 @@ async def delete_note(
         )
     
     await db.delete(note)
+
+
+@router.post("/{note_id}/view", response_model=NoteResponse)
+async def view_note(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Record a view on a note."""
+    result = await db.execute(
+        select(Note).where(Note.id == note_id, Note.owner_id == current_user.id)
+    )
+    note = result.scalar_one_or_none()
+    
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found"
+        )
+    
+    note.last_viewed = datetime.utcnow()
+    
+    await db.flush()
+    return note

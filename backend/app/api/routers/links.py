@@ -2,6 +2,7 @@
 Homepage Dashboard - Links Router
 """
 from typing import List, Optional
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +39,7 @@ async def list_links(
     unassigned: bool = Query(False),
     search: Optional[str] = Query(None),
     pinned_only: bool = Query(False),
+    sort_by: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -65,7 +67,15 @@ async def list_links(
             )
         )
     
-    query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.desc())
+    
+    if sort_by == "recent":
+        # Sort by last_clicked desc, then created_at
+        query = query.order_by(Link.last_clicked.desc().nulls_last(), Link.created_at.desc())
+    elif sort_by == "popular":
+        # Sort by click_count desc
+        query = query.order_by(Link.click_count.desc(), Link.created_at.desc())
+    else:
+        query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.desc())
     
     result = await db.execute(query)
     return result.scalars().all()
@@ -307,3 +317,28 @@ async def delete_link(
     
     
     await db.delete(link)
+
+
+@router.post("/{link_id}/click", response_model=LinkResponse)
+async def click_link(
+    link_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Record a click on a link."""
+    result = await db.execute(
+        select(Link).where(Link.id == link_id, Link.owner_id == current_user.id)
+    )
+    link = result.scalar_one_or_none()
+    
+    if not link:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Link not found"
+        )
+    
+    link.last_clicked = datetime.utcnow()
+    link.click_count += 1
+    
+    await db.flush()
+    return link

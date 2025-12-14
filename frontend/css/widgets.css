@@ -76,8 +76,8 @@
 }
 
 .widget-action-btn {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     display: flex;
     align-items: center;
@@ -85,14 +85,21 @@
     background: transparent;
     border: none;
     border-radius: var(--radius-sm);
-    color: var(--color-text-tertiary);
+    color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
+}
+
+.widget-action-btn svg {
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
 }
 
 .widget-action-btn:hover {
     background: var(--color-bg-hover);
     color: var(--color-text-primary);
+    transform: scale(1.1);
 }
 
 .widget-body {

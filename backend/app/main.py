@@ -16,7 +16,6 @@ from app.api.routers import (
     widgets_router,
     links_router,
     notes_router,
-    notes_router,
     integrations_router,
     search_router,
 )
@@ -85,6 +84,10 @@ async def root():
 @app.get("/{path:path}")
 async def catch_all(path: str):
     """Catch-all for SPA routing - serve index.html for non-file paths."""
+    # Return 404 for API paths to prevent 405 Method Not Allowed masking
+    if path.startswith("api/"):
+        return FileResponse("static/index.html", status_code=404)
+
     # Check if file exists in static directory
     static_path = f"static/{path}"
     if os.path.isfile(static_path):

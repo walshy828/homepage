@@ -912,6 +912,7 @@ a:hover {
     border-radius: var(--radius-lg);
     padding: var(--spacing-md);
     transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
 }
 
 .link-card:hover {

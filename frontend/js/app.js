@@ -213,9 +213,18 @@ class SearchController {
     }
 
     renderItem(item, index) {
+        let iconHtml = item.icon;
+        // Check if icon is a URL (image)
+        if (item.icon && (item.icon.match(/^(https?:\/\/|\/|www\.)/i) || item.icon.match(/\.(png|jpg|jpeg|gif|ico|svg|webp)$/i))) {
+            iconHtml = `<img class="search-result-icon-img" src="${item.icon}" alt="" style="width:20px;height:20px;border-radius:4px;object-fit:cover;" onerror="this.outerHTML='<span>${item.icon}</span>'">`;
+        } else {
+            // Wrap emoji/text in span for alignment
+            iconHtml = `<span>${item.icon}</span>`;
+        }
+
         return `
             <div class="search-result" data-index="${index}" data-id="${item.id}" data-type="${item.type}">
-                <div class="search-result-icon">${item.icon}</div>
+                <div class="search-result-icon">${iconHtml}</div>
                 <div class="search-result-content">
                     <div class="search-result-title">${item.title}</div>
                     <div class="search-result-subtitle">${this.app.sanitizeContent(item.subtitle)}</div>
@@ -291,6 +300,7 @@ class App {
         this.currentPage = 'dashboard'; // dashboard, notes
         this.editMode = false; // View mode by default
         this.activeNoteTag = null;
+        this.activeLinkTag = null;
         this.viewMode = localStorage.getItem('viewMode') || 'grid'; // grid | list
         this.sortMode = localStorage.getItem('sortMode') || 'updated_desc'; // updated_desc | updated_asc | title_asc | title_desc
     }
@@ -502,10 +512,9 @@ class App {
         document.getElementById('app').innerHTML = `
             <div class="app ${this.editMode ? 'edit-mode' : 'view-mode'}">
                 <header class="app-header">
-                    <div class="app-logo" onclick="app.openDashboardSettings()">
+                    <div class="app-logo" onclick="app.showDashboard(); if(app.editMode) app.toggleEditMode()">
                         ${iconHtml}
                         <span>${this.dashboard?.name || 'Dashboard'}</span>
-                        <svg class="edit-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </div>
                     
                     <div class="search-container">
@@ -554,7 +563,8 @@ class App {
                                 <div class="user-avatar" onclick="app.toggleUserMenu()">${this.user?.username?.charAt(0).toUpperCase() || 'U'}</div>
                                 <div class="user-dropdown" id="user-dropdown">
                                     <div class="user-dropdown-item" onclick="app.toggleTheme()">Toggle Theme</div>
-                                    <div class="user-dropdown-item" onclick="app.openSettings()">Settings</div>
+                                    <div class="user-dropdown-item" onclick="app.openDashboardSettings()">Dashboard Settings</div>
+                                    <div class="user-dropdown-item" onclick="app.openSettings()">Global Settings</div>
                                     <div class="user-dropdown-divider"></div>
                                     <div class="user-dropdown-item" onclick="app.logout()">Sign Out</div>
                                 </div>
@@ -571,8 +581,9 @@ class App {
                          <div class="mobile-menu-item" onclick="app.openAddNoteModal(); app.toggleMobileMenu()">+ Add Note</div>
                         <div class="mobile-menu-divider"></div>
                         <div class="mobile-menu-item" onclick="app.toggleEditMode(); app.toggleMobileMenu()">${this.editMode ? 'Done Editing' : 'Edit Dashboard'}</div>
-                         <div class="mobile-menu-item" onclick="app.toggleTheme(); app.toggleMobileMenu()">Toggle Theme</div>
-                        <div class="mobile-menu-item" onclick="app.openSettings(); app.toggleMobileMenu()">Settings</div>
+                        <div class="mobile-menu-item" onclick="app.toggleTheme(); app.toggleMobileMenu()">Toggle Theme</div>
+                        <div class="mobile-menu-item" onclick="app.openDashboardSettings(); app.toggleMobileMenu()">Dashboard Settings</div>
+                        <div class="mobile-menu-item" onclick="app.openSettings(); app.toggleMobileMenu()">Global Settings</div>
                         <div class="mobile-menu-item" onclick="app.logout()">Sign Out</div>
                     </div>
                 </header>
@@ -582,6 +593,15 @@ class App {
             <div id="modal-overlay" class="modal-overlay"></div>`;
         this.updateThemeIcon();
         this.initKeyboardShortcuts();
+
+        // Close user menu when clicking outside
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('user-dropdown');
+            const avatar = document.querySelector('.user-avatar');
+            if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && !avatar.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
 
         // Initialize Search
         this.searchController = new SearchController(this);
@@ -714,16 +734,7 @@ class App {
 
         const content = document.getElementById('main-content');
 
-        // Extract and sort tags
-        const allTags = new Set();
-        this.allNotes.forEach(note => {
-            if (note.tags) note.tags.forEach(t => allTags.add(t));
-        });
-        const sortedTags = Array.from(allTags).sort();
 
-        const tagsHtml = sortedTags.map(tag =>
-            `<button class="btn btn-sm ${this.activeNoteTag === tag ? 'btn-primary' : ''}" onclick="app.filterNotesByTag('${tag}')">${tag}</button>`
-        ).join('');
 
         content.innerHTML = `
             <div class="notes-page">
@@ -748,22 +759,19 @@ class App {
                              <button class="btn btn-primary" onclick="app.openAddNoteModal()">+ New Note</button>
                         </div>
                     </div>
-                    ${sortedTags.length || this.activeNoteTag ? `
-                    <div class="notes-filters-row" style="display:flex; justify-content:space-between; width:100%; align-items:center; gap:var(--spacing-md)">
-                         <div class="notes-tags-filter" style="display:flex; gap:var(--spacing-sm); flex-wrap:wrap; flex:1;">
-                            <button class="btn btn-sm ${!this.activeNoteTag ? 'btn-primary' : ''}" onclick="app.filterNotesByTag(null)">All</button>
-                            ${tagsHtml}
-                        </div>
+                    <div id="notes-tag-cloud" style="width:100%; margin-bottom: var(--spacing-sm);"></div>
+                    <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:var(--spacing-md)">
+                        <div style="flex:1"></div>
                         <input type="text" class="input" id="notes-search" placeholder="Search notes..." style="width:200px;">
-                    </div>` : `
-                    <div style="width:100%; display:flex; justify-content:flex-end;">
-                        <input type="text" class="input" id="notes-search" placeholder="Search notes..." style="width:200px;">
-                    </div>`}
+                    </div>
                 </div>
                 <div id="notes-grid" class="${this.viewMode === 'grid' ? 'notes-grid' : 'list-view-container'}"></div>
             </div>`;
 
         document.getElementById('notes-search').addEventListener('input', e => this.filterNotes(e.target.value));
+
+        // Render Tag Cloud
+        this.renderTagCloud(document.getElementById('notes-tag-cloud'), this.allNotes, 'notes');
 
         // Initial render
         this.filterNotes('');
@@ -783,7 +791,7 @@ class App {
             <div class="list-item-content">
                 <div class="list-item-title">${note.title}</div>
                 <div class="list-item-meta">
-                   <span>${age}</span>
+                   <span title="Created: ${note.created_at ? new Date(note.created_at).toLocaleString() : ''} | Updated: ${note.updated_at ? new Date(note.updated_at).toLocaleString() : ''}">${age}</span>
                    ${tagsHtml}
                 </div>
             </div>
@@ -797,32 +805,11 @@ class App {
         </div>`;
     }
 
-    async toggleNoteWidget(noteId) {
-        const note = this.allNotes.find(n => n.id === noteId);
-        if (!note) return;
-        await api.updateNote(noteId, { show_as_widget: !note.show_as_widget });
-        this.allNotes = await api.getNotes();
-        if (this.currentPage === 'notes') this.filterNotes(document.getElementById('notes-search')?.value || '');
-        else if (this.currentPage === 'dashboard') await this.initDashboard();
-        this.showToast(!note.show_as_widget ? 'Note added to dashboard' : 'Note hidden from dashboard');
-    }
 
 
 
-    filterNotesByTag(tag) {
-        const searchInput = document.getElementById('notes-search');
-        const currentSearch = searchInput ? searchInput.value : '';
 
-        this.activeNoteTag = tag;
-        this.renderNotesPage();
 
-        const newInput = document.getElementById('notes-search');
-        if (newInput) {
-            newInput.value = currentSearch;
-            this.filterNotes(currentSearch);
-            newInput.focus();
-        }
-    }
 
     filterNotes(query) {
         const grid = document.getElementById('notes-grid');
@@ -1224,9 +1211,8 @@ class App {
             <div class="widget-header">
                 <div class="widget-title">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
                 <div class="widget-actions">
-                    ${['links', 'weather'].includes(widget.widget_type) ? `<button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure">⚙</button>` : ''}
-                    <button class="widget-action-btn" onclick="app.refreshWidget(${widget.id})" title="Refresh">↻</button>
-                    <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete">×</button>
+                    ${['links', 'weather'].includes(widget.widget_type) ? `<button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>` : ''}
+                    <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
                 </div>
             </div>
             <div class="widget-body" id="widget-body-${widget.id}"><div class="widget-loading"><span class="spinner"></span></div></div>
@@ -1254,6 +1240,7 @@ class App {
                 case 'weather': await this.loadWeatherWidget(body, widget); break;
                 case 'docker': await this.loadDockerWidget(body, widget); break;
                 case 'proxmox': await this.loadProxmoxWidget(body, widget); break;
+                case 'notes': await this.loadNotesWidget(body, widget); break;
                 case 'clock': this.loadClockWidget(body, widget); break;
                 default: body.innerHTML = '<div class="widget-empty">Widget not supported</div>';
             }
@@ -1264,15 +1251,29 @@ class App {
 
     async loadLinksWidget(body, widget) {
         const config = widget.config || {};
-        let links = await api.getLinks({ widget_id: widget.id });
-        // If no links assigned to this widget, show unassigned links
-        if (config.filterCategory) links = links.filter(l => l.category === config.filterCategory);
-        links = links.slice(0, config.maxLinks || 10);
-        // Sort by display_order
-        links.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+        let links;
 
-        const showIcon = config.showIcon !== false, showTitle = config.showTitle !== false, showCategory = config.showCategory !== false;
-        const iconsOnly = showIcon && !showTitle && !showCategory;
+        if (config.mode === 'recent') {
+            links = await api.getLinks({ sort_by: 'recent' });
+        } else {
+            links = await api.getLinks({ widget_id: widget.id });
+        }
+
+        // If no links assigned to this widget, show unassigned links logic only for standard mode? 
+        // Actually, existing logic for standard mode assigns by widget_id.
+
+        if (config.filterCategory) links = links.filter(l => l.category === config.filterCategory);
+
+        const limit = config.limit || (config.maxLinks || 10);
+        links = links.slice(0, limit);
+
+        // Sort by display_order ONLY if standard mode
+        if (config.mode !== 'recent') {
+            links.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+        }
+
+        const showIcon = config.showIcon !== false, showTitle = config.showTitle !== false, showTags = config.showTags === true;
+        const iconsOnly = showIcon && !showTitle && !showTags;
 
 
         // Helper to render icon (Emoji, URL, or Favicon)
@@ -1292,29 +1293,29 @@ class App {
 
         const renderLinkContent = (l, i, isGrid) => {
             if (isGrid) {
-                return `<a href="${l.url}" target="_blank" class="link-icon-item" data-id="${l.id}" data-index="${i}" data-url="${l.url}" title="${l.title}\n${l.url}" draggable="${this.editMode}">
+                return `<a href="${l.url}" target="_blank" class="link-icon-item" data-id="${l.id}" data-index="${i}" data-url="${l.url}" title="${l.title}\n${l.url}" draggable="${this.editMode}" onclick="app.clickLink(${l.id})">
                     ${renderIcon(l, 'link-favicon-lg')}
                 </a>`;
             }
             // Tags display
             let tagsHtml = '';
-            if (l.custom_tags && l.custom_tags.length) {
+            // Only show tags if enabled in config
+            if (showTags && l.custom_tags && l.custom_tags.length) {
                 tagsHtml = `<div class="link-tags-list">${l.custom_tags.map(t => `<span class="link-tag-pill">${t}</span>`).join('')}</div>`;
             }
 
             return `<div class="link-item-wrapper" draggable="${this.editMode}" data-id="${l.id}" data-index="${i}">
                     ${this.editMode ? '<span class="link-drag-handle" title="Drag to reorder">⋮⋮</span>' : ''}
-                    <a href="${l.url}" target="_blank" class="link-item" data-url="${l.url}">
+                    <div class="link-item" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
                         ${showIcon ? renderIcon(l, 'link-favicon') : ''}
                         <div class="link-info">
                             ${showTitle ? `<div class="link-title">${l.title}</div>` : ''}
                             ${tagsHtml}
                         </div>
-                        ${showCategory && (!tagsHtml) ? `<span class="link-category">${l.category}</span>` : ''}
-                    </a>
+                    </div>
                     <div class="link-actions">
-                        <button class="link-action-btn" onclick="app.editLink(${l.id})" title="Edit">✎</button>
-                        <button class="link-action-btn" onclick="app.deleteLink(${l.id})" title="Delete">×</button>
+                        <button class="link-action-btn" onclick="event.stopPropagation(); app.editLink(${l.id})" title="Edit">✎</button>
+                        <button class="link-action-btn" onclick="event.stopPropagation(); app.deleteLink(${l.id})" title="Delete">×</button>
                     </div>
                 </div>`;
         };
@@ -1566,6 +1567,44 @@ class App {
         this.allLinks = await api.getLinks();
     }
 
+
+
+    async loadNotesWidget(body, widget) {
+        const config = widget.config || {};
+        let notes;
+
+        if (config.mode === 'recent') {
+            notes = await api.getNotes({ sort_by: 'recent' });
+        } else {
+            // Placeholder: Standard notes widget showing specific category or all?
+            // For now, default to recent if not specified, or all pinned?
+            notes = await api.getNotes({ pinned_only: true });
+        }
+
+        const limit = config.limit || 5;
+        notes = notes.slice(0, limit);
+
+        if (!notes || notes.length === 0) {
+            body.innerHTML = '<div class="widget-empty">No notes found</div>';
+            return;
+        }
+
+        body.innerHTML = `<div class="link-list">
+            ${notes.map(n => `
+                <div class="list-item" onclick="app.viewNote(${n.id})">
+                    <div class="list-item-main">
+                        <div class="list-item-title">${n.title}</div>
+                        <div class="list-item-meta" style="display:flex; justify-content:space-between; align-items:center;">
+                             <span></span>
+                             <span title="Created: ${n.created_at ? new Date(n.created_at).toLocaleString() : ''} | Updated: ${n.updated_at ? new Date(n.updated_at).toLocaleString() : ''}" style="color:var(--color-text-tertiary); font-size:0.7em;">${this.timeAgo(n.updated_at)}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>`;
+    }
+
+    // Existing loadWeatherWidget...
     async loadWeatherWidget(body, widget) {
         const config = widget.config || {};
         const location = config.location || this.user?.default_weather_location || 'New York';
@@ -1763,13 +1802,18 @@ class App {
     }
 
     changeCalendarMonth(widgetId, newMonth) {
-        // Handle year wrap-around
         const date = new Date(new Date().getFullYear(), newMonth, 1);
         this.renderWidgetCalendar(widgetId, date.getFullYear(), date.getMonth());
     }
 
     async savePositions() {
         if (!this.grid || !this.dashboard) return;
+
+        // Critical Fix: ONLY save if in edit mode. Viewing on mobile triggers 'change' events due to responsiveness,
+        // but we must not save those distorted layouts or any layout changes unless explicitly editing.
+        if (!this.editMode) return;
+
+        // Still keep column check as safety
         // Only save positions if we are in full desktop mode (12 columns)
         // This prevents saving mobile/tablet responsive layout changes as permanent
         if (this.grid.getColumn() !== 12) return;
@@ -1861,8 +1905,12 @@ class App {
                 this.allNotes = await api.getNotes(); // Refresh local state
                 this.closeModal();
                 this.showToast('Note added');
+                this.showToast('Note added');
                 if (this.currentPage === 'notes') this.renderNotesPage();
-                else this.loadDashboard();
+                else {
+                    this.loadDashboard();
+                    this.refreshRecentWidgets('notes');
+                }
             });
         }
         input.value = ''; // clear input
@@ -1887,6 +1935,26 @@ class App {
         });
     }
 
+    async refreshRecentWidgets(type) {
+        // Find all widgets of type links/notes with mode='recent'
+        // We can check local widgets state or iterate DOM. DOM is safer for now.
+        const selector = type === 'links' ? '.links-widget' : '.notes-widget';
+        const widgets = document.querySelectorAll(selector);
+
+        // We need to check config. Fetching all widgets config might be heavy but accurate.
+        // Optimization: refresh all of that type, the refresh logic checks config anyway.
+        // Actually refreshWidget re-fetches data based on config.
+        const allWidgets = await api.getDashboardWidgets(this.dashboard.id);
+
+        widgets.forEach(el => {
+            const id = parseInt(el.dataset.id);
+            const widgetDef = allWidgets.find(w => w.id === id);
+            if (widgetDef && widgetDef.config?.mode === 'recent') {
+                this.refreshWidget(id);
+            }
+        });
+    }
+
     async deleteWidget(id) {
         if (!confirm('Delete this widget?')) return;
         await api.deleteWidget(id);
@@ -1905,13 +1973,30 @@ class App {
         this.refreshLinksWidgets();
         // If on links page, refresh the grid there too
         if (this.currentPage === 'links') this.renderLinksPage();
+        this.closeModal();
         this.showToast('Link deleted');
     }
 
+    async clickLink(id) {
+        // optimistically track click without waiting
+        api.clickLink(id).then(() => this.refreshRecentWidgets('links')).catch(e => console.error('Failed to track click', e));
+        return true; // Allow default navigation
+    }
+
     openWidgetDrawer() {
-        const types = ['links', 'weather', 'docker', 'proxmox', 'clock'];
+        const types = [
+            { id: 'links', label: 'Links', icon: this.getWidgetIcon('links') },
+            { id: 'notes', label: 'Notes', icon: this.getWidgetIcon('notes') },
+            // Add distinct "Recent" options
+            { id: 'recent-links', label: 'Recent Links', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
+            { id: 'recent-notes', label: 'Recent Notes', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/><circle cx="12" cy="12" r="10" transform="scale(0.4) translate(20,20)" fill="currentColor" opacity="0.2"/></svg>' },
+            { id: 'weather', label: 'Weather', icon: this.getWidgetIcon('weather') },
+            { id: 'docker', label: 'Docker', icon: this.getWidgetIcon('docker') },
+            { id: 'proxmox', label: 'Proxmox', icon: this.getWidgetIcon('proxmox') },
+            { id: 'clock', label: 'Clock', icon: this.getWidgetIcon('clock') }
+        ];
         this.showModal('Add Widget', `<div class="widget-toolbar" style="flex-wrap: wrap;">
-            ${types.map(t => `<button class="widget-toolbar-item" onclick="app.createWidget('${t}')">${this.getWidgetIcon(t)}<span class="widget-toolbar-label">${t.charAt(0).toUpperCase() + t.slice(1)}</span></button>`).join('')}
+            ${types.map(t => `<button class="widget-toolbar-item" onclick="app.createWidget('${t.id}')">${t.icon}<span class="widget-toolbar-label">${t.label}</span></button>`).join('')}
         </div>`);
     }
 
@@ -1928,7 +2013,17 @@ class App {
         }
 
         // Find the bottom-most position to add new widget there
+        // Find the bottom-most position to add new widget there
         let maxY = 0;
+        // Use local widgets state if available, as it's the source of truth
+        if (this.widgets && this.widgets.length > 0) {
+            this.widgets.forEach(w => {
+                if ((w.grid_y + w.grid_h) > maxY) {
+                    maxY = w.grid_y + w.grid_h;
+                }
+            });
+        }
+        // Fallback to grid engine if local state is empty but grid exists (rare)
         if (this.grid) {
             const items = this.grid.getGridItems();
             items.forEach(item => {
@@ -1938,7 +2033,32 @@ class App {
                 }
             });
         }
-        const widget = await api.createWidget({ dashboard_id: this.dashboard.id, widget_type: type, title: type.charAt(0).toUpperCase() + type.slice(1), grid_x: 0, grid_y: maxY, grid_w: 4, grid_h: 3 });
+
+        let widgetType = type;
+        let widgetTitle = type.charAt(0).toUpperCase() + type.slice(1);
+        let widgetConfig = {};
+
+        // Handle composite types
+        if (type === 'recent-links') {
+            widgetType = 'links';
+            widgetTitle = 'Recent Links';
+            widgetConfig = { mode: 'recent', limit: 10 };
+        } else if (type === 'recent-notes') {
+            widgetType = 'notes';
+            widgetTitle = 'Recent Notes';
+            widgetConfig = { mode: 'recent', limit: 10 };
+        }
+
+        const widget = await api.createWidget({
+            dashboard_id: this.dashboard.id,
+            widget_type: widgetType,
+            title: widgetTitle,
+            grid_x: 0,
+            grid_y: maxY,
+            grid_w: 4,
+            grid_h: 3,
+            config: widgetConfig
+        });
         if (this.grid) {
             this.addWidget(widget);
         }
@@ -2073,6 +2193,59 @@ class App {
         this.renderLinksPage();
     }
 
+    renderTagCloud(container, items, type) {
+        container.innerHTML = ''; // Clear previous content logic
+        // Collect tags
+        const tags = {};
+        items.forEach(item => {
+            const itemTags = type === 'links' ? (item.custom_tags || []) : (item.tags || []);
+            if (Array.isArray(itemTags)) {
+                itemTags.forEach(t => tags[t] = (tags[t] || 0) + 1);
+            }
+        });
+
+        const sortedTags = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 15);
+        if (sortedTags.length === 0) return;
+
+        const currentFilter = type === 'links' ? this.activeLinkTag : this.activeNoteTag;
+
+        const cloud = document.createElement('div');
+        cloud.className = 'tag-cloud';
+        cloud.style.padding = '0 0 var(--spacing-sm) 0';
+        cloud.style.display = 'flex';
+        cloud.style.gap = 'var(--spacing-xs)';
+        cloud.style.flexWrap = 'wrap';
+
+        cloud.innerHTML = sortedTags.map(([tag, count]) =>
+            `<span class="tag-pill ${currentFilter === tag ? 'active' : ''}" 
+                   onclick="app.filterByTag('${tag}', '${type}')"
+                   style="cursor: pointer; padding: 2px 8px; border-radius: 12px; background: var(--bg-secondary); font-size: 0.85em; ${currentFilter === tag ? 'background: var(--primary); color: white;' : ''}">
+                #${tag} <small>(${count})</small>
+            </span>`
+        ).join('');
+
+        // Use insertBefore to place at top of container, or append if empty?
+        // Container usually has list content.
+        // I should probably return the element and let caller place it.
+        // But caller code is simple render.
+        // Let's prepend.
+        if (container.firstChild) {
+            container.insertBefore(cloud, container.firstChild);
+        } else {
+            container.appendChild(cloud);
+        }
+    }
+
+    filterByTag(tag, type) {
+        if (type === 'links') {
+            this.activeLinkTag = this.activeLinkTag === tag ? null : tag;
+            this.renderLinksPage();
+        } else {
+            this.activeNoteTag = this.activeNoteTag === tag ? null : tag;
+            this.renderNotesPage();
+        }
+    }
+
     renderLinksPage(query = '') {
         if (!query) {
             const input = document.getElementById('links-search');
@@ -2082,13 +2255,27 @@ class App {
         const grid = document.getElementById('links-page-grid');
         if (!grid) return;
 
+        // Render Tag Cloud
+        // Insert a container for tags if not exists
+        let tagContainer = document.getElementById('links-tag-cloud');
+        if (!tagContainer) {
+            tagContainer = document.createElement('div');
+            tagContainer.id = 'links-tag-cloud';
+            tagContainer.style.width = '100%';
+            tagContainer.style.marginBottom = 'var(--spacing-sm)';
+            if (grid.parentNode) grid.parentNode.insertBefore(tagContainer, grid);
+        }
+        this.renderTagCloud(tagContainer, this.allLinks, 'links');
+
         const term = query.toLowerCase();
-        let filtered = this.allLinks.filter(l =>
-            l.title.toLowerCase().includes(term) ||
-            l.url.toLowerCase().includes(term) ||
-            (l.custom_tags && l.custom_tags.some(t => t.toLowerCase().includes(term))) ||
-            (l.category && l.category.toLowerCase().includes(term))
-        );
+        let filtered = this.allLinks.filter(l => {
+            const matchesSearch = l.title.toLowerCase().includes(term) ||
+                l.url.toLowerCase().includes(term) ||
+                (l.custom_tags && l.custom_tags.some(t => t.toLowerCase().includes(term))) ||
+                (l.category && l.category.toLowerCase().includes(term));
+            const matchesTag = this.activeLinkTag ? (l.custom_tags && l.custom_tags.includes(this.activeLinkTag)) : true;
+            return matchesSearch && matchesTag;
+        });
 
         filtered = this.sortItems(filtered, this.sortMode);
 
@@ -2112,7 +2299,7 @@ class App {
             tagsHtml = `<div class="link-card-tags">${l.custom_tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`;
         }
         return `
-            <div class="link-card">
+            <div class="link-card" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
                 <div class="link-card-header">
                     <div class="link-card-icon">
                         ${l.custom_icon ?
@@ -2121,8 +2308,8 @@ class App {
             }
                     </div>
                     <div class="link-card-actions">
-                         <button onclick="app.editLink(${l.id})" class="btn-icon">✎</button>
-                         <button onclick="window.open('${l.url}', '_blank')" class="btn-icon">↗</button>
+                         <button onclick="event.stopPropagation(); app.editLink(${l.id})" class="btn-icon">✎</button>
+                         <button onclick="event.stopPropagation(); window.open('${l.url}', '_blank')" class="btn-icon">↗</button>
                     </div>
                 </div>
                 <div class="link-card-body">
@@ -2462,7 +2649,8 @@ class App {
 
     // Modal for adding/editing notes with Rich Editor (Quill) and Tags
     openAddNoteModal() {
-        this.showModal('Add Note', `<form id="add-note-form">
+        const dateStr = new Date().toLocaleString();
+        this.showModal(`Add Note <span style="font-weight:normal; font-size:0.7em; color:var(--text-muted)">(${dateStr})</span>`, `<form id="add-note-form">
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" placeholder="Optional (auto-generated if empty)"></div>
             <div class="form-group"><label class="form-label">Content</label>
                 <div id="add-note-editor" style="height: 200px;"></div>
@@ -2531,7 +2719,13 @@ class App {
 
         let content = this.sanitizeContent(note.content);
 
+        const createdDate = note.created_at ? new Date(note.created_at).toLocaleString() : 'Unknown';
+        const updatedDate = note.updated_at ? new Date(note.updated_at).toLocaleString() : 'Unknown';
+
         this.showModal('Edit Note', `<form id="edit-note-form">
+            <div style="margin-bottom:1rem; font-size:0.8rem; color:var(--text-muted);">
+                Created: ${createdDate} &bull; Updated: ${updatedDate}
+            </div>
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${note.title}" required></div>
             <div class="form-group"><label class="form-label">Content</label>
                  <div id="edit-note-editor" style="height: 300px;">${content}</div>
@@ -2593,11 +2787,17 @@ class App {
             this.closeModal();
             this.showToast('Note updated');
             if (this.currentPage === 'notes') this.renderNotesPage();
-            else await this.initDashboard();
+            else this.refreshRecentWidgets('notes');
         });
     }
 
-    viewNote(id) {
+    async viewNote(id) {
+        // optimistically track view
+        try {
+            await api.viewNote(id);
+            this.refreshRecentWidgets('notes'); // Refresh recent notes on view
+        } catch (e) { console.error("Failed to track view", e); }
+
         const note = this.allNotes.find(n => n.id === id);
         if (!note) return;
         const safeContent = this.sanitizeContent(note.content);
@@ -2639,6 +2839,7 @@ class App {
         const config = widget.config || {};
 
         if (widget.widget_type === 'weather') {
+            // ... existing weather config ...
             this.showModal('Configure Weather Widget', `<form id="widget-config-form">
                 <div class="form-group"><label class="form-label">Widget Title</label><input class="input" name="title" value="${widget.title}"></div>
                 <div class="form-group"><label class="form-label">Location</label><input class="input" name="location" value="${config.location || ''}" placeholder="e.g., New York, London, 01745"></div>
@@ -2682,10 +2883,62 @@ class App {
                 };
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
                 this.closeModal();
-                this.showToast('Widget configured');
                 this.refreshWidget(widgetId);
             });
-        } else if (widget.widget_type === 'clock') {
+            return;
+        }
+
+        if (widget.widget_type === 'links' || widget.widget_type === 'notes') {
+            const isLinks = widget.widget_type === 'links';
+            this.showModal(`Configure ${isLinks ? 'Links' : 'Notes'} Widget`, `<form id="widget-config-form">
+                <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${widget.title}"></div>
+                
+                <div class="form-group">
+                    <label class="form-label">Mode</label>
+                    <select class="input" name="mode" onchange="document.getElementById('limit-group').style.display = this.value === 'recent' ? 'block' : 'none'">
+                        <option value="standard" ${config.mode !== 'recent' ? 'selected' : ''}>Standard</option>
+                        <option value="recent" ${config.mode === 'recent' ? 'selected' : ''}>Recent</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="limit-group" style="${config.mode === 'recent' ? '' : 'display:none'}">
+                    <label class="form-label">Item Count</label>
+                    <input class="input" type="number" name="limit" value="${config.limit || 10}" min="1" max="50">
+                </div>
+
+                ${isLinks ? `
+                    <div class="form-group"><label class="form-label">Filter Category (Standard Mode)</label><input class="input" name="filterCategory" value="${config.filterCategory || ''}" placeholder="Optional"></div>
+                    <div class="form-group"><label class="checkbox"><input type="checkbox" name="showIcon" ${config.showIcon !== false ? 'checked' : ''}> Show Icons</label></div>
+                    <div class="form-group"><label class="checkbox"><input type="checkbox" name="showTitle" ${config.showTitle !== false ? 'checked' : ''}> Show Titles</label></div>
+                    <div class="form-group"><label class="checkbox"><input type="checkbox" name="showTags" ${config.showTags === true ? 'checked' : ''}> Show Tags</label></div>
+                ` : ''}
+
+                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+            </form>`);
+
+            document.getElementById('widget-config-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const form = e.target;
+                const newConfig = {
+                    mode: form.mode.value,
+                    limit: parseInt(form.limit.value) || 10
+                };
+
+                if (isLinks) {
+                    newConfig.filterCategory = form.filterCategory.value;
+                    newConfig.showIcon = form.showIcon.checked;
+                    newConfig.showTitle = form.showTitle.checked;
+                    newConfig.showTags = form.showTags.checked;
+                }
+
+                await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
+                this.closeModal();
+                this.refreshWidget(widgetId);
+            });
+            return;
+        }
+
+        if (widget.widget_type === 'clock') {
             this.showModal('Configure Clock Widget', `<form id="widget-config-form">
                 <div class="form-group"><label class="form-label">Widget Title</label><input class="input" name="title" value="${widget.title}"></div>
                 
@@ -2722,38 +2975,6 @@ class App {
                     showTime: form.showTime.checked,
                     showDate: form.showDate.checked,
                     showCalendar: form.showCalendar.checked
-                };
-                await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
-                this.closeModal();
-                this.showToast('Widget configured');
-                this.refreshWidget(widgetId);
-            });
-        } else if (widget.widget_type === 'links') {
-            const categories = ['all', 'news', 'technology', 'social', 'work', 'shopping', 'entertainment', 'education', 'finance', 'other', 'uncategorized'];
-            this.showModal('Configure Links Widget', `<form id="widget-config-form">
-                <div class="form-group"><label class="form-label">Widget Title</label><input class="input" name="title" value="${widget.title}"></div>
-                <div class="form-group"><label class="form-label">Filter by Category</label>
-                    <select class="input" name="filterCategory">${categories.map(c => `<option value="${c === 'all' ? '' : c}" ${config.filterCategory === c || (!config.filterCategory && c === 'all') ? 'selected' : ''}>${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('')}</select>
-                </div>
-                <div class="form-group"><label class="form-label">Max Links</label><input class="input" name="maxLinks" type="number" value="${config.maxLinks || 10}" min="1" max="50"></div>
-                <div class="form-group"><label class="checkbox"><input type="checkbox" name="showIcon" ${config.showIcon !== false ? 'checked' : ''}> Show favicon</label></div>
-                <div class="form-group"><label class="checkbox"><input type="checkbox" name="showTitle" ${config.showTitle !== false ? 'checked' : ''}> Show title</label></div>
-                <div class="form-group"><label class="checkbox"><input type="checkbox" name="showCategory" ${config.showCategory !== false ? 'checked' : ''}> Show category</label></div>
-                <div class="form-group"><label class="checkbox"><input type="checkbox" name="showPreviews" ${config.showPreviews !== false ? 'checked' : ''}> Show Link Previews</label></div>
-                <div class="form-group"><label class="checkbox"><input type="checkbox" name="autoFit" ${config.autoFit ? 'checked' : ''}> Auto-fit Height (Min 2, Max 6 rows)</label></div>
-                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
-            </form>`);
-            document.getElementById('widget-config-form').addEventListener('submit', async e => {
-                e.preventDefault();
-                const form = e.target;
-                const newConfig = {
-                    filterCategory: form.filterCategory.value || null,
-                    maxLinks: parseInt(form.maxLinks.value),
-                    showIcon: form.showIcon.checked,
-                    showTitle: form.showTitle.checked,
-                    showCategory: form.showCategory.checked,
-                    showPreviews: form.showPreviews.checked,
-                    autoFit: form.autoFit.checked
                 };
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
                 this.closeModal();
