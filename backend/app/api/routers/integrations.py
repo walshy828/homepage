@@ -15,7 +15,7 @@ router = APIRouter(prefix="/integrations", tags=["Integrations"])
 # ============== Docker ==============
 
 @router.get("/docker", response_model=DockerResponse)
-async def get_docker_status(
+def get_docker_status(
     include_stats: bool = True,
     current_user: User = Depends(get_current_user)
 ):
@@ -30,7 +30,7 @@ async def get_docker_status(
 
 
 @router.post("/docker/{container_id}/start")
-async def start_docker_container(
+def start_docker_container(
     container_id: str,
     current_user: User = Depends(get_current_user)
 ):
@@ -52,7 +52,7 @@ async def start_docker_container(
 
 
 @router.post("/docker/{container_id}/stop")
-async def stop_docker_container(
+def stop_docker_container(
     container_id: str,
     current_user: User = Depends(get_current_user)
 ):
@@ -74,7 +74,7 @@ async def stop_docker_container(
 
 
 @router.post("/docker/{container_id}/restart")
-async def restart_docker_container(
+def restart_docker_container(
     container_id: str,
     current_user: User = Depends(get_current_user)
 ):
@@ -98,7 +98,7 @@ async def restart_docker_container(
 # ============== Proxmox ==============
 
 @router.get("/proxmox", response_model=ProxmoxResponse)
-async def get_proxmox_status(
+def get_proxmox_status(
     current_user: User = Depends(get_current_user)
 ):
     """Get Proxmox cluster status."""
@@ -112,7 +112,7 @@ async def get_proxmox_status(
 
 
 @router.post("/proxmox/{node}/{vm_type}/{vmid}/start")
-async def start_proxmox_vm(
+def start_proxmox_vm(
     node: str,
     vm_type: str,
     vmid: int,
@@ -142,7 +142,7 @@ async def start_proxmox_vm(
 
 
 @router.post("/proxmox/{node}/{vm_type}/{vmid}/stop")
-async def stop_proxmox_vm(
+def stop_proxmox_vm(
     node: str,
     vm_type: str,
     vmid: int,

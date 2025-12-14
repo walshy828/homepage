@@ -21,8 +21,13 @@ class API {
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
 
+        // Add timeout to prevent hanging UI
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+
         try {
-            const response = await fetch(url, { ...options, headers });
+            const response = await fetch(url, { ...options, headers, signal: controller.signal });
+            clearTimeout(timeoutId);
             if (response.status === 401) {
                 this.setToken(null);
                 window.location.href = '/login';
