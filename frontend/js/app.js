@@ -303,10 +303,24 @@ class App {
         this.activeLinkTag = null;
         this.viewMode = localStorage.getItem('viewMode') || 'grid'; // grid | list
         this.sortMode = localStorage.getItem('sortMode') || 'updated_desc'; // updated_desc | updated_asc | title_asc | title_desc
+        this._isDirty = false;
+
+        // Browser navigation warning
+        window.addEventListener('beforeunload', (e) => {
+            if (this._isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
     }
 
     // Helper to sort items
     sortItems(items, sortMode) {
+        // For server-side sorted modes, return as-is
+        if (sortMode === 'recent' || sortMode === 'popular') {
+            return items;
+        }
+
         const sorted = [...items];
         sorted.sort((a, b) => {
             switch (sortMode) {
@@ -373,9 +387,15 @@ class App {
         else if (this.currentPage === 'links') this.renderLinksPage();
     }
 
-    setSortMode(mode) {
+    async setSortMode(mode) {
         this.sortMode = mode;
         localStorage.setItem('sortMode', mode);
+
+        // For links library with 'recent' or 'popular', reload from API
+        if (this.currentPage === 'links' && (mode === 'recent' || mode === 'popular')) {
+            this.allLinks = await api.getLinks({ sort_by: mode });
+        }
+
         if (this.currentPage === 'notes') this.renderNotesPage();
         else if (this.currentPage === 'links') this.renderLinksPage();
     }
@@ -505,103 +525,163 @@ class App {
     }
 
     renderApp() {
-        const iconHtml = this.dashboard?.icon
-            ? `<span class="app-logo-emoji">${this.dashboard.icon}</span>`
-            : `<div class="app-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`;
+        const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+
+        const logoIconHtml = this.dashboard?.icon
+            ? `<span class="sidebar-logo-emoji">${this.dashboard.icon}</span>`
+            : `<div class="sidebar-logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>`;
 
         document.getElementById('app').innerHTML = `
             <div class="app ${this.editMode ? 'edit-mode' : 'view-mode'}">
-                <header class="app-header">
-                    <div class="app-logo" onclick="app.showDashboard(); if(app.editMode) app.toggleEditMode()">
-                        ${iconHtml}
-                        <span>${this.dashboard?.name || 'Dashboard'}</span>
+                <!-- Sidebar Navigation -->
+                <nav class="app-sidebar-nav ${sidebarCollapsed ? 'collapsed' : ''}" id="app-sidebar">
+                    <div class="sidebar-header">
+                        <button class="sidebar-toggle-btn" onclick="app.toggleSidebar()" title="Toggle Sidebar (⌘B)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                        </button>
+                        <div class="sidebar-logo" onclick="app.showDashboard()">
+                            ${logoIconHtml}
+                            <span class="sidebar-logo-text">${this.dashboard?.name || 'Dashboard'}</span>
+                        </div>
                     </div>
                     
-                    <div class="search-container">
-                        <div class="search-bar" id="global-search-bar">
-                            <span class="search-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-                            <input type="text" class="search-input" id="global-search-input" placeholder="Search links or notes..." autocomplete="off">
-                            <div class="search-shortcuts">
-                                <span class="shortcut-hint">⌘K</span>
+                    <div class="sidebar-nav">
+                        <!-- Main Navigation -->
+                        <div class="sidebar-section">
+                            <div class="sidebar-section-title">Navigate</div>
+                            <div class="sidebar-item ${this.currentPage === 'dashboard' ? 'active' : ''}" onclick="app.showDashboard(); app.closeMobileSidebar();" title="Dashboard (G then D)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span>
+                                <span class="sidebar-item-text">Dashboard</span>
+                                <span class="sidebar-item-shortcut">G→D</span>
                             </div>
-                            <!-- Dropdown for results -->
-                            <div class="search-dropdown" id="search-dropdown" style="display: none;"></div>
-                        </div>
-                    </div>
-
-                    <div class="header-actions">
-                        <div class="new-content-menu">
-                            <button class="btn btn-primary btn-icon-only" id="add-new-btn" title="Add New (⌘I)">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <div class="dropdown-menu" id="add-new-dropdown">
-                                <div class="dropdown-item" onclick="app.openAddLinkModal()">
-                                    <span class="icon">🔗</span> Link
-                                    <span class="shortcut">L</span>
-                                </div>
-                                <div class="dropdown-item" onclick="app.openAddNoteModal()">
-                                    <span class="icon">📝</span> Note
-                                    <span class="shortcut">N</span>
-                                </div>
+                            <div class="sidebar-item ${this.currentPage === 'links' ? 'active' : ''}" onclick="app.showLinksPage(); app.closeMobileSidebar();" title="Links (G then L)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                                <span class="sidebar-item-text">Links</span>
+                                <span class="sidebar-item-shortcut">G→L</span>
+                            </div>
+                            <div class="sidebar-item ${this.currentPage === 'notes' ? 'active' : ''}" onclick="app.showNotesPage(); app.closeMobileSidebar();" title="Notes (G then N)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+                                <span class="sidebar-item-text">Notes</span>
+                                <span class="sidebar-item-shortcut">G→N</span>
                             </div>
                         </div>
-
-                        <div class="desktop-actions">
-                            <button class="btn nav-btn ${this.currentPage === 'dashboard' ? 'btn-primary' : 'btn-ghost'}" onclick="app.showDashboard()">Dashboard</button>
-                            <button class="btn nav-btn ${this.currentPage === 'links' ? 'btn-primary' : 'btn-ghost'}" onclick="app.showLinksPage()">Links</button>
-                            <button class="btn nav-btn ${this.currentPage === 'notes' ? 'btn-primary' : 'btn-ghost'}" onclick="app.showNotesPage()">Notes</button>
-                            
-                            <button class="btn btn-primary edit-mode-only" onclick="app.openWidgetDrawer()">
-                                <span class="icon">➕</span> Add Widget
-                            </button>
-
-                            <button class="edit-mode-toggle btn ${this.editMode ? 'btn-primary' : 'btn-ghost'}" onclick="app.toggleEditMode()" title="${this.editMode ? 'Switch to view mode' : 'Switch to edit mode'}">
-                                ${this.editMode ? '✓ Done' : '✎ Edit'}
-                            </button>
-                            
-                            <div class="user-menu">
-                                <div class="user-avatar" onclick="app.toggleUserMenu()">${this.user?.username?.charAt(0).toUpperCase() || 'U'}</div>
-                                <div class="user-dropdown" id="user-dropdown">
-                                    <div class="user-dropdown-item" onclick="app.toggleTheme()">Toggle Theme</div>
-                                    <div class="user-dropdown-item" onclick="app.openDashboardSettings()">Dashboard Settings</div>
-                                    <div class="user-dropdown-item" onclick="app.openSettings()">Global Settings</div>
-                                    <div class="user-dropdown-divider"></div>
-                                    <div class="user-dropdown-item" onclick="app.logout()">Sign Out</div>
-                                </div>
+                        
+                        <div class="sidebar-divider"></div>
+                        
+                        <!-- Actions -->
+                        <div class="sidebar-section">
+                            <div class="sidebar-section-title">Actions</div>
+                            <div class="sidebar-item ${this.editMode ? 'active' : ''}" onclick="app.toggleEditMode(); app.closeMobileSidebar();" title="Toggle Edit Mode (E)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span>
+                                <span class="sidebar-item-text">${this.editMode ? '✓ Editing' : 'Edit Mode'}</span>
+                                <span class="sidebar-item-shortcut">E</span>
+                            </div>
+                            <div class="sidebar-item edit-mode-only" onclick="app.openWidgetDrawer(); app.closeMobileSidebar();" title="Add Widget (N)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></span>
+                                <span class="sidebar-item-text">Add Widget</span>
+                                <span class="sidebar-item-shortcut">N</span>
                             </div>
                         </div>
-                         <button class="mobile-menu-btn" onclick="app.toggleMobileMenu()">☰</button>
+                        
+                        <div class="sidebar-divider"></div>
+                        
+                        <!-- Settings -->
+                        <div class="sidebar-section">
+                            <div class="sidebar-section-title">Settings</div>
+                            <div class="sidebar-item" onclick="app.toggleTheme(); app.closeMobileSidebar();" title="Toggle Theme">
+                                <span class="sidebar-item-icon" id="theme-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></span>
+                                <span class="sidebar-item-text">Toggle Theme</span>
+                            </div>
+                            <div class="sidebar-item" onclick="app.openDashboardSettings(); app.closeMobileSidebar();" title="Dashboard Settings">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+                                <span class="sidebar-item-text">Dashboard Settings</span>
+                            </div>
+                            <div class="sidebar-item" onclick="app.openSettings(); app.closeMobileSidebar();" title="Global Settings">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+                                <span class="sidebar-item-text">Global Settings</span>
+                            </div>
+                            <div class="sidebar-item" onclick="app.showKeyboardHelp();" title="Keyboard Shortcuts (?)">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg></span>
+                                <span class="sidebar-item-text">Keyboard Shortcuts</span>
+                                <span class="sidebar-item-shortcut">?</span>
+                            </div>
+                        </div>
+                        
+                        <div class="sidebar-divider"></div>
+                        
+                        <!-- User -->
+                        <div class="sidebar-section">
+                            <div class="sidebar-item" onclick="app.logout();" title="Sign Out">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+                                <span class="sidebar-item-text">Sign Out (${this.user?.username || 'User'})</span>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mobile-menu-dropdown" id="mobile-menu-dropdown">
-                         <div class="mobile-menu-item" onclick="app.showDashboard(); app.toggleMobileMenu()">Dashboard</div>
-                        <div class="mobile-menu-item" onclick="app.showNotesPage(); app.toggleMobileMenu()">Notes</div>
-                        <div class="mobile-menu-divider"></div>
-                         <div class="mobile-menu-item" onclick="app.openAddLinkModal(); app.toggleMobileMenu()">+ Add Link</div>
-                         <div class="mobile-menu-item" onclick="app.openAddNoteModal(); app.toggleMobileMenu()">+ Add Note</div>
-                        <div class="mobile-menu-divider"></div>
-                        <div class="mobile-menu-item" onclick="app.toggleEditMode(); app.toggleMobileMenu()">${this.editMode ? 'Done Editing' : 'Edit Dashboard'}</div>
-                        <div class="mobile-menu-item" onclick="app.toggleTheme(); app.toggleMobileMenu()">Toggle Theme</div>
-                        <div class="mobile-menu-item" onclick="app.openDashboardSettings(); app.toggleMobileMenu()">Dashboard Settings</div>
-                        <div class="mobile-menu-item" onclick="app.openSettings(); app.toggleMobileMenu()">Global Settings</div>
-                        <div class="mobile-menu-item" onclick="app.logout()">Sign Out</div>
+                    <div class="sidebar-footer">
                     </div>
-                </header>
-                <main class="app-main"><div id="main-content"></div></main>
+                </nav>
+                
+                <!-- Mobile Sidebar Overlay -->
+                <div class="sidebar-overlay" id="sidebar-overlay" onclick="app.closeMobileSidebar()"></div>
+                
+                <!-- Main Content -->
+                <div class="app-content-wrapper">
+                    <!-- Top Bar (Search + Add) -->
+                    <header class="app-topbar">
+                        <button class="mobile-menu-toggle" onclick="app.openMobileSidebar()" title="Menu">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
+                        
+                        <div class="search-container">
+                            <div class="search-bar" id="global-search-bar">
+                                <span class="search-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                                <input type="text" class="search-input" id="global-search-input" placeholder="Search links or notes..." autocomplete="off">
+                                <div class="search-shortcuts">
+                                    <span class="shortcut-hint">/</span>
+                                </div>
+                                <div class="search-dropdown" id="search-dropdown" style="display: none;"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="header-actions">
+                            <div class="new-content-menu">
+                                <button class="btn btn-primary btn-add-dropdown" id="add-new-btn" title="Add New (N or ⌘N)">
+                                    <svg class="add-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                    <svg class="dropdown-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="6 9 12 15 18 9"/>
+                                    </svg>
+                                </button>
+                                <div class="dropdown-menu" id="add-new-dropdown">
+                                    <div class="dropdown-item" onclick="app.openAddLinkModal()">
+                                        <span class="icon">🔗</span> Link
+                                        <span class="shortcut">A→L / ⌘⇧L</span>
+                                    </div>
+                                    <div class="dropdown-item" onclick="app.openAddNoteModal()">
+                                        <span class="icon">📝</span> Note
+                                        <span class="shortcut">A→N / ⌘⇧N</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+                    
+                    <main class="app-main"><div id="main-content"></div></main>
+                </div>
             </div>
             <div id="toast-container" class="toast-container"></div>
-            <div id="modal-overlay" class="modal-overlay"></div>`;
+            <div id="modal-overlay" class="modal-overlay"></div>
+            <div id="note-fullpage-overlay" class="note-fullpage-overlay"></div>
+            <div id="keyboard-help-overlay" class="keyboard-help-overlay"></div>`;
+
         this.updateThemeIcon();
         this.initKeyboardShortcuts();
-
-        // Close user menu when clicking outside
-        document.addEventListener('click', (e) => {
-            const dropdown = document.getElementById('user-dropdown');
-            const avatar = document.querySelector('.user-avatar');
-            if (dropdown && dropdown.classList.contains('open') && !dropdown.contains(e.target) && !avatar.contains(e.target)) {
-                dropdown.classList.remove('open');
-            }
-        });
+        this.initSidebar();
 
         // Initialize Search
         this.searchController = new SearchController(this);
@@ -628,18 +708,8 @@ class App {
             }
         });
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts for menu specifically
         document.addEventListener('keydown', (e) => {
-            // Don't process shortcuts if modal is open
-            const modalOpen = document.getElementById('modal-overlay')?.classList.contains('active');
-            if (modalOpen) return;
-
-            // Cmd/Ctrl + I for Import/Insert/Add
-            if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
-                e.preventDefault();
-                menu.classList.toggle('show');
-            }
-
             // Shortcuts when menu is open
             if (menu.classList.contains('show')) {
                 if (e.key === 'l') { // Link
@@ -655,15 +725,151 @@ class App {
         });
     }
 
+    closeAddMenu() {
+        const menu = document.getElementById('add-new-dropdown');
+        if (menu) menu.classList.remove('show');
+    }
+
+    // ============================================
+    // Sidebar Methods
+    // ============================================
+
+    initSidebar() {
+        // Sidebar is already initialized in renderApp with localStorage state
+        // This method handles any additional setup
+    }
+
+    toggleSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        if (!sidebar) return;
+
+        sidebar.classList.toggle('collapsed');
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        localStorage.setItem('sidebarCollapsed', isCollapsed);
+    }
+
+    openMobileSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar) sidebar.classList.add('mobile-open');
+        if (overlay) overlay.classList.add('active');
+    }
+
+    closeMobileSidebar() {
+        const sidebar = document.getElementById('app-sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar) sidebar.classList.remove('mobile-open');
+        if (overlay) overlay.classList.remove('active');
+    }
+
+    // ============================================
+    // Keyboard Shortcuts Help Modal
+    // ============================================
+
+    showKeyboardHelp() {
+        const overlay = document.getElementById('keyboard-help-overlay');
+        if (!overlay) return;
+
+        overlay.innerHTML = `
+            <div class="keyboard-help-modal">
+                <div class="keyboard-help-header">
+                    <h2 class="keyboard-help-title">Keyboard Shortcuts</h2>
+                    <button class="keyboard-help-close" onclick="app.closeKeyboardHelp()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="keyboard-help-body">
+                    <div class="keyboard-section">
+                        <div class="keyboard-section-title">Navigation (G then...)</div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Go to Dashboard</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">G</span><span class="key-arrow">→</span><span class="key">D</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Go to Links</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">G</span><span class="key-arrow">→</span><span class="key">L</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Go to Notes</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">G</span><span class="key-arrow">→</span><span class="key">N</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="keyboard-section">
+                        <div class="keyboard-section-title">Add Content (A then...)</div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Add Link</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">A</span><span class="key-arrow">→</span><span class="key">L</span> or <span class="key">⌘</span><span class="key">⇧</span><span class="key">L</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Add Note</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">A</span><span class="key-arrow">→</span><span class="key">N</span> or <span class="key">⌘</span><span class="key">⇧</span><span class="key">N</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="keyboard-section">
+                        <div class="keyboard-section-title">Quick Actions</div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Focus Search</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">/</span> or <span class="key">⌘</span><span class="key">K</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Toggle Sidebar</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">⌘</span><span class="key">B</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Toggle Edit Mode</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">E</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Open Add Menu</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">N</span> or <span class="key">⌘</span><span class="key">N</span></span>
+                        </div>
+                    </div>
+                    
+                    <div class="keyboard-section">
+                        <div class="keyboard-section-title">General</div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Show this help</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">?</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Close / Cancel</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">Esc</span></span>
+                        </div>
+                        <div class="keyboard-shortcut-row">
+                            <span class="keyboard-shortcut-label">Save (in editor)</span>
+                            <span class="keyboard-shortcut-keys"><span class="key">⌘</span><span class="key">S</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        overlay.classList.add('active');
+
+        // Close on click outside
+        overlay.onclick = (e) => {
+            if (e.target === overlay) {
+                this.closeKeyboardHelp();
+            }
+        };
+    }
+
+    closeKeyboardHelp() {
+        const overlay = document.getElementById('keyboard-help-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+    }
+
     toggleEditMode() {
         this.editMode = !this.editMode;
         document.querySelector('.app').className = `app ${this.editMode ? 'edit-mode' : 'view-mode'}`;
-        const btn = document.querySelector('.edit-mode-toggle');
-        if (btn) {
-            btn.className = `edit-mode-toggle btn ${this.editMode ? 'btn-primary' : 'btn-ghost'}`;
-            btn.innerHTML = this.editMode ? '✓ Editing' : '✎ Edit';
-            btn.title = this.editMode ? 'Switch to view mode' : 'Switch to edit mode';
-        }
+
+        // Update navigation states (Sidebar + Header)
+        this.updateNavigationState();
+
         // Enable/disable grid editing
         if (this.grid) {
             this.grid.enableMove(this.editMode);
@@ -709,7 +915,7 @@ class App {
         this.currentPage = 'dashboard';
         document.getElementById('main-content').innerHTML = '<div class="dashboard-container"><div class="grid-stack" id="grid"></div></div>';
         await this.initDashboard();
-        this.updateHeaderButtons();
+        this.updateNavigationState();
     }
 
     updateHeaderButtons() {
@@ -721,7 +927,7 @@ class App {
 
     async showNotesPage() {
         this.currentPage = 'notes';
-        this.updateHeaderButtons();
+        this.updateNavigationState();
         this.allNotes = await api.getNotes();
         this.activeNoteTag = null; // Reset filter on enter
         this.renderNotesPage();
@@ -1067,6 +1273,7 @@ class App {
         }
 
         const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        this.widgets = widgets; // Store for positioning logic
         for (const w of widgets) this.addWidget(w);
         // Add note widgets
         const noteWidgets = this.allNotes.filter(n => n.show_as_widget);
@@ -1108,11 +1315,17 @@ class App {
     addNoteWidget(note) {
         const id = `note-${note.id}`;
         const safeContent = this.sanitizeContent(note.content);
+
+        // Check if note is less than 24 hours old
+        const isNew = (new Date() - new Date(note.created_at)) < 24 * 60 * 60 * 1000;
+
         this.grid.addWidget({
             id, x: note.widget_grid_x, y: note.widget_grid_y, w: note.widget_grid_w, h: note.widget_grid_h, content: `
             <div class="widget note-widget" data-note-id="${note.id}" data-type="note">
                 <div class="widget-header">
-                    <div class="widget-title"><svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>${note.title}</span></div>
+                    <div class="widget-title">
+                        ${isNew ? '<span class="badge-new">New</span>' : ''}
+                        <svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>${note.title}</span></div>
                     <div class="widget-actions">
                         <button class="widget-action-btn" onclick="app.viewNote(${note.id})" title="View">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -1180,9 +1393,9 @@ class App {
 
         // Attempt to place cursor at click position (Quill handles this well natively, but we can try to be precise)
         if (clickX && clickY) {
-            // Quill doesn't have a direct "cursor from point" API that's stable across versions, 
+            // Quill doesn't have a direct "cursor from point" API that's stable across versions,
             // but simple focus usually puts cursor at end or clicked location if it captured the event.
-            // Since we replaced the DOM, the original click target is gone. 
+            // Since we replaced the DOM, the original click target is gone.
             // We rely on Quill's native behavior after focus.
         }
     }
@@ -1210,10 +1423,10 @@ class App {
         return `<div class="widget ${widget.widget_type}-widget" data-id="${widget.id}" data-type="${widget.widget_type}">
             <div class="widget-header">
                 <div class="widget-title">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
-                <div class="widget-actions">
-                    ${['links', 'weather'].includes(widget.widget_type) ? `<button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>` : ''}
-                    <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
-                </div>
+            <div class="widget-actions">
+                ${['links', 'weather', 'todo'].includes(widget.widget_type) ? `<button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>` : ''}
+                <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+            </div>
             </div>
             <div class="widget-body" id="widget-body-${widget.id}"><div class="widget-loading"><span class="spinner"></span></div></div>
         </div>`;
@@ -1226,11 +1439,11 @@ class App {
             weather: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>',
             docker: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
             proxmox: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>',
-            clock: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+            clock: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+            todo: '<svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'
         };
         return icons[type] || icons.links;
     }
-
     async initWidgetLogic(widget) {
         const body = document.getElementById(`widget-body-${widget.id}`);
         if (!body) return;
@@ -1242,6 +1455,7 @@ class App {
                 case 'proxmox': await this.loadProxmoxWidget(body, widget); break;
                 case 'notes': await this.loadNotesWidget(body, widget); break;
                 case 'clock': this.loadClockWidget(body, widget); break;
+                case 'todo': this.loadTodoWidget(body, widget); break;
                 default: body.innerHTML = '<div class="widget-empty">Widget not supported</div>';
             }
         } catch (e) { body.innerHTML = `<div class="widget-error">${e.message}</div>`; }
@@ -1259,7 +1473,7 @@ class App {
             links = await api.getLinks({ widget_id: widget.id });
         }
 
-        // If no links assigned to this widget, show unassigned links logic only for standard mode? 
+        // If no links assigned to this widget, show unassigned links logic only for standard mode?
         // Actually, existing logic for standard mode assigns by widget_id.
 
         if (config.filterCategory) links = links.filter(l => l.category === config.filterCategory);
@@ -1442,7 +1656,7 @@ class App {
         const contentHeight = body.scrollHeight;
 
         // Total px height needed ~ Header + Content + Padding
-        // We use scrollHeight which includes padding of content if box-sizing is border-box? 
+        // We use scrollHeight which includes padding of content if box-sizing is border-box?
         // Let's assume contentHeight + Header is roughly right.
         const totalHeightNeeded = contentHeight + HEADER_HEIGHT_APPROX;
 
@@ -1464,40 +1678,180 @@ class App {
     }
 
     initKeyboardShortcuts() {
+        // State for sequence shortcuts
+        this._pendingKey = null;
+        this._pendingKeyTimeout = null;
+
         // Global Shortcuts
         document.addEventListener('keydown', (e) => {
-            // Check if modal is open - if so, ignore most shortcuts
-            const modalOpen = document.getElementById('modal-overlay')?.classList.contains('active');
+            // Don't process shortcuts if typing in an input
+            const activeElement = document.activeElement;
+            const isTyping = activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.isContentEditable ||
+                activeElement.classList.contains('ql-editor');
 
-            // ESC: Always allow (to close modals)
+            // Check if any modal/overlay is open
+            const modalOpen = document.getElementById('modal-overlay')?.classList.contains('active');
+            const fullpageOpen = document.getElementById('note-fullpage-overlay')?.classList.contains('active');
+            const keyboardHelpOpen = document.getElementById('keyboard-help-overlay')?.classList.contains('active');
+
+            // ESC: Always allow (to close modals/help)
             if (e.key === 'Escape') {
-                const activeElement = document.activeElement;
-                if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') {
+                if (isTyping) {
                     activeElement.blur();
                 }
                 this.closeModal();
-                this.hideLinkPreview();
+                this.closeKeyboardHelp();
+                this.closeNoteFullpage();
+                this.closeMobileSidebar();
+                this.hideLinkPreview?.();
+                this._pendingKey = null;
                 return;
             }
 
-            // Don't process other shortcuts if modal is open
-            if (modalOpen) return;
+            // CMD/CTRL + S: Save active form (Modal or Fullpage Note)
+            // This is handled before the early returns so it works while typing
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
 
-            // CMD/CTRL + K: Focus Command Bar
+                // 1. Check if a standard form modal is open
+                if (modalOpen) {
+                    const form = document.querySelector('#modal-overlay form');
+                    if (form) {
+                        form.requestSubmit();
+                        return;
+                    }
+                }
+
+                // 2. Check if the fullpage note editor is open
+                if (fullpageOpen && this._currentFullpageNoteId) {
+                    const saveBtn = document.getElementById('fullpage-save-btn');
+                    if (saveBtn && !saveBtn.disabled) {
+                        this.saveNoteFullpage(this._currentFullpageNoteId);
+                        return;
+                    }
+                }
+            }
+
+            // Don't process other shortcuts if modal is open or typing
+            if (modalOpen || fullpageOpen || keyboardHelpOpen) return;
+            if (isTyping) return;
+
+            // ? : Show keyboard help
+            if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+                e.preventDefault();
+                this.showKeyboardHelp();
+                return;
+            }
+
+            // / : Focus search
+            if (e.key === '/') {
+                e.preventDefault();
+                document.getElementById('global-search-input')?.focus();
+                return;
+            }
+
+            // CMD/CTRL + K: Focus Search
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
-                document.getElementById('command-input')?.focus();
+                document.getElementById('global-search-input')?.focus();
+                return;
+            }
+
+            // CMD/CTRL + B: Toggle Sidebar
+            if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+                e.preventDefault();
+                this.toggleSidebar();
+                return;
+            }
+
+            // CMD/CTRL + I or N or CMD/CTRL + N: Open add menu
+            if (((e.metaKey || e.ctrlKey) && (e.key === 'i' || e.key === 'n')) || (e.key === 'n' && !e.metaKey && !e.ctrlKey)) {
+                e.preventDefault();
+                const menu = document.getElementById('add-new-dropdown');
+                menu?.classList.toggle('show');
+                return;
+            }
+
+            // CMD/CTRL + SHIFT + N: Add Note
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
+                e.preventDefault();
+                this.openAddNoteModal();
+                return;
+            }
+
+            // CMD/CTRL + SHIFT + L: Add Link
+            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'L') {
+                e.preventDefault();
+                this.openAddLinkModal();
+                return;
+            }
+
+            // E: Toggle Edit Mode (only on dashboard)
+            if (e.key === 'e' && this.currentPage === 'dashboard') {
+                e.preventDefault();
+                this.toggleEditMode();
+                return;
+            }
+
+            // Sequence shortcuts (G→D, G→L, G→N, A→L, A→N)
+            const now = Date.now();
+
+            // Check for second key in sequence
+            if (this._pendingKey && (now - this._pendingKeyTime) < 500) {
+                const sequence = this._pendingKey + e.key.toLowerCase();
+                this._pendingKey = null;
+                clearTimeout(this._pendingKeyTimeout);
+
+                // Navigation sequences
+                if (sequence === 'gd') {
+                    e.preventDefault();
+                    this.showDashboard();
+                    return;
+                }
+                if (sequence === 'gl') {
+                    e.preventDefault();
+                    this.showLinksPage();
+                    return;
+                }
+                if (sequence === 'gn') {
+                    e.preventDefault();
+                    this.showNotesPage();
+                    return;
+                }
+
+                // Add sequences
+                if (sequence === 'al') {
+                    e.preventDefault();
+                    this.openAddLinkModal();
+                    return;
+                }
+                if (sequence === 'an') {
+                    e.preventDefault();
+                    this.openAddNoteModal();
+                    return;
+                }
+            }
+
+            // Start sequence with G or A
+            if (e.key === 'g' || e.key === 'a') {
+                this._pendingKey = e.key.toLowerCase();
+                this._pendingKeyTime = now;
+                this._pendingKeyTimeout = setTimeout(() => {
+                    this._pendingKey = null;
+                }, 500);
+                return;
             }
         });
 
-        // Command Bar Logic
-        const commandInput = document.getElementById('command-input');
-        if (commandInput) {
-            commandInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    this.handleCommandBarSubmit(commandInput.value);
-                    commandInput.value = '';
+        // Command Bar Logic (for search input)
+        const searchInput = document.getElementById('global-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    searchInput.blur();
+                    searchInput.value = '';
                 }
             });
         }
@@ -1797,7 +2151,7 @@ class App {
         calendarHtml += `</div>`;
         container.innerHTML = calendarHtml;
 
-        // Store current view state on the widget object if needed, 
+        // Store current view state on the widget object if needed,
         // but for now we pass explicit next/prev values in onclick
     }
 
@@ -1973,7 +2327,9 @@ class App {
         this.refreshLinksWidgets();
         // If on links page, refresh the grid there too
         if (this.currentPage === 'links') this.renderLinksPage();
-        this.closeModal();
+        else if (this.currentPage === 'dashboard') await this.initDashboard();
+
+        this.closeModal(true); // Force close after delete
         this.showToast('Link deleted');
     }
 
@@ -1993,7 +2349,8 @@ class App {
             { id: 'weather', label: 'Weather', icon: this.getWidgetIcon('weather') },
             { id: 'docker', label: 'Docker', icon: this.getWidgetIcon('docker') },
             { id: 'proxmox', label: 'Proxmox', icon: this.getWidgetIcon('proxmox') },
-            { id: 'clock', label: 'Clock', icon: this.getWidgetIcon('clock') }
+            { id: 'clock', label: 'Clock', icon: this.getWidgetIcon('clock') },
+            { id: 'todo', label: 'To-Do List', icon: this.getWidgetIcon('todo') }
         ];
         this.showModal('Add Widget', `<div class="widget-toolbar" style="flex-wrap: wrap;">
             ${types.map(t => `<button class="widget-toolbar-item" onclick="app.createWidget('${t.id}')">${t.icon}<span class="widget-toolbar-label">${t.label}</span></button>`).join('')}
@@ -2012,27 +2369,10 @@ class App {
             return;
         }
 
-        // Find the bottom-most position to add new widget there
-        // Find the bottom-most position to add new widget there
-        let maxY = 0;
-        // Use local widgets state if available, as it's the source of truth
-        if (this.widgets && this.widgets.length > 0) {
-            this.widgets.forEach(w => {
-                if ((w.grid_y + w.grid_h) > maxY) {
-                    maxY = w.grid_y + w.grid_h;
-                }
-            });
-        }
-        // Fallback to grid engine if local state is empty but grid exists (rare)
-        if (this.grid) {
-            const items = this.grid.getGridItems();
-            items.forEach(item => {
-                const node = item.gridstackNode;
-                if (node && (node.y + node.h) > maxY) {
-                    maxY = node.y + node.h;
-                }
-            });
-        }
+        // Find the bottom-most position using robust server data
+        const w = 4; // Default width
+        const h = 3; // Default height
+        const { x, y } = await this.getSmartBottomPosition(w, h); // Async wait
 
         let widgetType = type;
         let widgetTitle = type.charAt(0).toUpperCase() + type.slice(1);
@@ -2046,23 +2386,26 @@ class App {
         } else if (type === 'recent-notes') {
             widgetType = 'notes';
             widgetTitle = 'Recent Notes';
-            widgetConfig = { mode: 'recent', limit: 10 };
+            widgetConfig = { mode: 'recent', limit: 5 };
+        } else if (type === 'todo') {
+            widgetTitle = 'To-Do List';
+            widgetConfig = { items: [] };
         }
 
         const widget = await api.createWidget({
             dashboard_id: this.dashboard.id,
             widget_type: widgetType,
             title: widgetTitle,
-            grid_x: 0,
-            grid_y: maxY,
-            grid_w: 4,
-            grid_h: 3,
+            grid_x: x,
+            grid_y: y,
+            grid_w: w,
+            grid_h: h,
             config: widgetConfig
         });
         if (this.grid) {
             this.addWidget(widget);
         }
-        this.closeModal();
+        this.closeModal(true); // Force close after adding widget
         this.showToast('Widget added');
     }
 
@@ -2092,43 +2435,116 @@ class App {
         });
     }
 
-    async createWeatherWidget(location) {
-        // Find the bottom-most position to add new widget there
+    /**
+     * Async calculation of the next available position at the bottom.
+     * Fetches fresh state from DB to ensure 100% accuracy and avoid client-side state drift.
+     */
+    async getSmartBottomPosition(w = 4, h = 3) {
         let maxY = 0;
-        if (this.grid) {
-            const items = this.grid.getGridItems();
-            items.forEach(item => {
-                const node = item.gridstackNode;
-                if (node && (node.y + node.h) > maxY) {
-                    maxY = node.y + node.h;
+        const occupied = [];
+
+        try {
+            // Fetch fresh data from source of truth
+            const [widgets, notes] = await Promise.all([
+                api.getDashboardWidgets(this.dashboard.id),
+                api.getNotes()
+            ]);
+
+            // Map all standard widgets
+            widgets.forEach(wd => {
+                const wx = wd.grid_x || 0;
+                const wy = wd.grid_y || 0;
+                const ww = wd.grid_w || 4;
+                const wh = wd.grid_h || 3;
+                occupied.push({ x: wx, y: wy, w: ww, h: wh });
+                if (wy + wh > maxY) maxY = wy + wh;
+            });
+
+            // Map all note widgets
+            notes.forEach(n => {
+                if (n.show_as_widget) {
+                    const nx = n.widget_grid_x || 0;
+                    const ny = n.widget_grid_y || 0;
+                    const nw = n.widget_grid_w || 3;
+                    const nh = n.widget_grid_h || 2;
+                    occupied.push({ x: nx, y: ny, w: nw, h: nh });
+                    if (ny + nh > maxY) maxY = ny + nh;
                 }
             });
+
+        } catch (e) {
+            console.error("Error calculating position from DB, falling back to empty:", e);
         }
+
+        // If dashboard is empty
+        if (maxY === 0) return { x: 0, y: 0 };
+
+        // Helper to check collision
+        const isAreaFree = (ax, ay, aw, ah) => {
+            for (const o of occupied) {
+                // Check intersection
+                if (ax < o.x + o.w && ax + aw > o.x && ay < o.y + o.h && ay + ah > o.y) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        // Search for space.
+        // We iterate Y from 0.
+        // Constraint: The widget must be "at the bottom".
+        // Definition: It fills a gap in the bottom-most occupied rows OR starts a new row.
+        // Heuristic: The widget's bottom edge (y+h) must be >= maxY.
+        // This allows filling a hole at y=maxY-h, but prevents filling a hole at y=0 (if maxY=10).
+
+        // Scan up to maxY (new row)
+        for (let y = 0; y <= maxY; y++) {
+            // Check constraint first to skip early rows
+            if (y + h < maxY) continue;
+
+            for (let x = 0; x <= 12 - w; x++) {
+                if (isAreaFree(x, y, w, h)) {
+                    return { x, y };
+                }
+            }
+        }
+
+        // Fallback: This should technically be unreachable if the loop covers y=maxY, 
+        // but just in case, append to absolute bottom.
+        return { x: 0, y: maxY };
+    }
+
+    async createWeatherWidget(location) {
+        // Find the bottom-most position to add new widget there
+        const w = 4; // Default width
+        const h = 2; // Default height for weather
+        const { x, y } = await this.getSmartBottomPosition(w, h);
 
         try {
             const widget = await api.createWidget({
                 dashboard_id: this.dashboard.id,
                 widget_type: 'weather',
                 title: 'Weather',
-                grid_x: 0,
-                grid_y: maxY,
-                grid_w: 4,
-                grid_h: 2,
+                grid_x: x,
+                grid_y: y,
+                grid_w: w,
+                grid_h: h,
                 config: { location: location }
             });
 
             if (this.grid) {
                 this.addWidget(widget);
             }
-            this.closeModal();
+            this.closeModal(true); // Force close after adding widget
             this.showToast('Weather widget added');
         } catch (error) {
             console.error('Failed to create weather widget:', error);
-            this.showToast('Failed to add widget');
+            this.showToast('Failed to add widget', 'error');
         }
     }
 
     showModal(title, content, headerActions = '') {
+        this._isDirty = false; // Reset dirty state for new modal
         const overlay = document.getElementById('modal-overlay');
         overlay.innerHTML = `<div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><h3 class="modal-title">${title}</h3><div style="display:flex;gap:var(--spacing-xs);align-items:center;">${headerActions}<button class="btn btn-ghost btn-icon modal-close-btn" onclick="app.closeModal()" title="Close">×</button></div></div><div class="modal-body">${content}</div></div>`;
         overlay.classList.add('active');
@@ -2141,12 +2557,21 @@ class App {
         };
     }
 
-    closeModal() { document.getElementById('modal-overlay').classList.remove('active'); }
+    closeModal(force = false) {
+        if (!force && this._isDirty) {
+            if (!confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+                return;
+            }
+        }
+        const overlay = document.getElementById('modal-overlay');
+        overlay.classList.remove('active');
+        this._isDirty = false;
+    }
 
     async showLinksPage() {
         this.currentPage = 'links';
         window.location.hash = '#links';
-        this.updateNavButtons();
+        this.updateNavigationState();
 
         const main = document.getElementById('main-content');
         main.innerHTML = `
@@ -2157,6 +2582,8 @@ class App {
                         <select class="sort-select" onchange="app.setSortMode(this.value)">
                                 <option value="updated_desc" ${this.sortMode === 'updated_desc' ? 'selected' : ''}>Newest</option>
                                 <option value="updated_asc" ${this.sortMode === 'updated_asc' ? 'selected' : ''}>Oldest</option>
+                                <option value="recent" ${this.sortMode === 'recent' ? 'selected' : ''}>Most Recent</option>
+                                <option value="popular" ${this.sortMode === 'popular' ? 'selected' : ''}>Most Popular</option>
                                 <option value="title_asc" ${this.sortMode === 'title_asc' ? 'selected' : ''}>Title A-Z</option>
                                 <option value="title_desc" ${this.sortMode === 'title_desc' ? 'selected' : ''}>Title Z-A</option>
                         </select>
@@ -2217,7 +2644,7 @@ class App {
         cloud.style.flexWrap = 'wrap';
 
         cloud.innerHTML = sortedTags.map(([tag, count]) =>
-            `<span class="tag-pill ${currentFilter === tag ? 'active' : ''}" 
+            `<span class="tag-pill ${currentFilter === tag ? 'active' : ''}"
                    onclick="app.filterByTag('${tag}', '${type}')"
                    style="cursor: pointer; padding: 2px 8px; border-radius: 12px; background: var(--bg-secondary); font-size: 0.85em; ${currentFilter === tag ? 'background: var(--primary); color: white;' : ''}">
                 #${tag} <small>(${count})</small>
@@ -2349,7 +2776,30 @@ class App {
         </div>`;
     }
 
-    updateNavButtons() {
+    updateNavigationState() {
+        // 1. Sidebar Items
+        document.querySelectorAll('.sidebar-item').forEach(item => {
+            const text = item.querySelector('.sidebar-item-text')?.textContent.trim().toLowerCase();
+
+            // Handle main pages
+            if (['dashboard', 'links', 'notes'].includes(text)) {
+                if (text === this.currentPage) item.classList.add('active');
+                else item.classList.remove('active');
+            }
+
+            // Handle Edit Mode separately (it has its own specific entry in the sidebar)
+            if (item.getAttribute('onclick')?.includes('toggleEditMode')) {
+                if (this.editMode) {
+                    item.classList.add('active');
+                    item.querySelector('.sidebar-item-text').textContent = '✓ Editing';
+                } else {
+                    item.classList.remove('active');
+                    item.querySelector('.sidebar-item-text').textContent = 'Edit Mode';
+                }
+            }
+        });
+
+        // 2. Legacy Nav Buttons (for backward compatibility if any remain in mobile/modals)
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('btn-primary', 'btn-ghost');
             if (btn.textContent.trim().toLowerCase() === this.currentPage) {
@@ -2358,7 +2808,17 @@ class App {
                 btn.classList.add('btn-ghost');
             }
         });
+
+        // 3. Header Actions Nav Buttons (specific layout)
+        document.querySelectorAll('.header-actions .nav-btn').forEach((b, i) => {
+            if (this.currentPage === 'dashboard') b.className = `btn nav-btn ${i === 0 ? 'btn-primary' : 'btn-ghost'}`;
+            else if (this.currentPage === 'notes') b.className = `btn nav-btn ${i === 1 ? 'btn-primary' : 'btn-ghost'}`;
+        });
     }
+
+    // Aliases for compatibility
+    updateNavButtons() { this.updateNavigationState(); }
+    updateHeaderButtons() { this.updateNavigationState(); }
 
     async openAddLinkModal(widgetId = null, initialUrl = '') {
         // Get all link widgets for dropdown
@@ -2376,7 +2836,7 @@ class App {
             <div class="form-group"><label class="form-label">URL</label><input type="url" class="input" name="url" placeholder="https://example.com" required value="${initialUrl}"></div>
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" placeholder="Optional - Auto-fetched"></div>
             <div class="form-group"><label class="form-label">Custom Icon</label><input class="input" name="custom_icon" placeholder="Emoji or https://..."></div>
-            
+
             <div class="form-group">
                 <label class="form-label">Add to Widget</label>
                 <select class="input" name="widget_id" id="widget-selector">
@@ -2390,7 +2850,7 @@ class App {
                     </label>
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
                     Tags
@@ -2402,6 +2862,8 @@ class App {
 
             <button type="submit" class="btn btn-primary" style="width:100%" id="add-link-submit">Add Link</button>
         </form>`);
+
+        this.closeAddMenu(); // Close add menu when modal opens
 
         // Auto-focus URL
         const urlInput = document.querySelector('#add-link-form [name="url"]');
@@ -2419,11 +2881,13 @@ class App {
                     e.target.setSelectionRange(e.target.value.length, e.target.value.length);
                 }
             }
+            this._isDirty = true;
         });
 
         // Init Tag Input
         const tagContainer = document.getElementById('tag-input-container');
         const tagInput = new TagInput(tagContainer, []);
+        tagInput.onchange = () => { this._isDirty = true; };
 
         // AI Logic
         const autoTagBtn = document.getElementById('auto-tag-btn');
@@ -2443,6 +2907,7 @@ class App {
                     const newTags = res.tags.filter(t => !currentTags.includes(t));
                     newTags.forEach(t => tagInput.addTag(t));
                     this.showToast(`Added ${newTags.length} tags`);
+                    this._isDirty = true;
                 } else {
                     this.showToast('No tags suggested');
                 }
@@ -2500,7 +2965,8 @@ class App {
                 });
 
                 this.allLinks = await api.getLinks();
-                this.closeModal();
+                this._isDirty = false; // Clear before closing
+                this.closeModal(true); // Force close after successful save
                 this.showToast('Link added');
 
                 // Immediate update
@@ -2514,6 +2980,10 @@ class App {
                 btn.textContent = 'Add Link';
             }
         });
+
+        document.getElementById('add-link-form').addEventListener('input', () => {
+            this._isDirty = true;
+        });
     }
 
     async editLink(id) {
@@ -2524,7 +2994,7 @@ class App {
             <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${link.url}" required></div>
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${link.title}"></div>
             <div class="form-group"><label class="form-label">Custom Icon</label><input class="input" name="custom_icon" value="${link.custom_icon || ''}" placeholder="Emoji or URL"></div>
-            
+
             <div class="form-group">
                 <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
                     Tags
@@ -2547,6 +3017,7 @@ class App {
             initialTags = [`#${link.category}`];
         }
         const tagInput = new TagInput(tagContainer, initialTags);
+        tagInput.onchange = () => { this._isDirty = true; };
 
         // AI Logic for Edit
         const autoTagBtn = document.getElementById('edit-auto-tag-btn');
@@ -2562,6 +3033,7 @@ class App {
                     e.target.setSelectionRange(e.target.value.length, e.target.value.length);
                 }
             }
+            this._isDirty = true;
         });
 
         autoTagBtn.onclick = async () => {
@@ -2576,6 +3048,7 @@ class App {
                     const newTags = res.tags.filter(t => !currentTags.includes(t));
                     newTags.forEach(t => tagInput.addTag(t));
                     this.showToast(`Added ${newTags.length} tags`);
+                    this._isDirty = true;
                 } else {
                     this.showToast('No new tags found');
                 }
@@ -2614,9 +3087,17 @@ class App {
             });
 
             this.allLinks = await api.getLinks();
-            this.closeModal();
+            this._isDirty = false; // Clear before closing
+            this.closeModal(true); // Force close after successful save
             this.showToast('Link updated');
-            this.refreshLinksWidgets();
+
+            if (this.currentPage === 'links') this.renderLinksPage();
+            else if (this.currentPage === 'dashboard') await this.initDashboard();
+            else this.refreshLinksWidgets();
+        });
+
+        document.getElementById('edit-link-form').addEventListener('input', () => {
+            this._isDirty = true;
         });
     }
 
@@ -2648,147 +3129,107 @@ class App {
     }
 
     // Modal for adding/editing notes with Rich Editor (Quill) and Tags
+    // Now redirects to fullpage generic workflow
     openAddNoteModal() {
-        const dateStr = new Date().toLocaleString();
-        this.showModal(`Add Note <span style="font-weight:normal; font-size:0.7em; color:var(--text-muted)">(${dateStr})</span>`, `<form id="add-note-form">
-            <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" placeholder="Optional (auto-generated if empty)"></div>
-            <div class="form-group"><label class="form-label">Content</label>
-                <div id="add-note-editor" style="height: 200px;"></div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Tags</label>
-                <div id="note-tag-input-container"></div>
-            </div>
-            <div class="form-group"><label class="checkbox"><input type="checkbox" name="show_as_widget" checked> Show on dashboard</label></div>
-            <button type="submit" class="btn btn-primary" style="width:100%">Save Note</button>
-        </form>`);
+        this.closeAddMenu();
+        this.openAddNoteFullpage();
+    }
 
-        const quill = new Quill('#add-note-editor', {
+    // New workflow for fullpage creation
+    openAddNoteFullpage() {
+        this._isDirty = false;
+        this._currentFullpageNoteId = null; // New note
+        const dateStr = new Date().toLocaleString();
+
+        const overlay = document.getElementById('note-fullpage-overlay');
+        overlay.innerHTML = `
+            <div class="note-fullpage-header">
+                <div class="note-fullpage-header-left">
+                    <button class="note-fullpage-back" onclick="app.closeNoteFullpage()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        Cancel
+                    </button>
+                    <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" placeholder="Note title...">
+                </div>
+                <div class="note-fullpage-header-right">
+                    <span class="note-fullpage-meta">New Note</span>
+                    <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(null)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Create
+                    </button>
+                </div>
+            </div>
+            <div class="note-fullpage-content">
+                <div class="note-fullpage-content-inner note-fullpage-editor">
+                    <div id="fullpage-note-editor" style="min-height: 300px;"></div>
+                </div>
+            </div>
+            <div class="note-fullpage-footer">
+                <div class="note-fullpage-footer-left">
+                    <label class="checkbox">
+                        <input type="checkbox" id="fullpage-note-widget">
+                        Show on dashboard
+                    </label>
+                </div>
+                <div class="note-fullpage-footer-right">
+                    <div style="display:flex;flex-direction:column;gap:var(--spacing-xs);">
+                        <label style="font-size:var(--font-size-sm);color:var(--color-text-secondary);">Tags</label>
+                        <div id="fullpage-note-tags"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (!overlay.classList.contains('active')) {
+            requestAnimationFrame(() => overlay.classList.add('active'));
+        }
+
+        const quill = new Quill('#fullpage-note-editor', {
             theme: 'snow',
             modules: {
                 toolbar: [
                     [{ 'header': [1, 2, 3, false] }],
                     ['bold', 'italic', 'underline', 'strike'],
                     ['blockquote', 'code-block'],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'list': 'check' }],
+                    ['link'],
                     ['clean']
                 ]
             }
         });
+        this._fullpageQuill = quill;
 
-        // Auto-focus editor
-        setTimeout(() => quill.focus(), 100);
-
+        // Dirty tracking
+        quill.on('text-change', () => { this._isDirty = true; });
+        document.querySelector('.note-fullpage-header')?.addEventListener('input', () => { this._isDirty = true; });
         // Init Tag Input
-        const tagInput = new TagInput(document.getElementById('note-tag-input-container'), []);
+        const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), []);
+        this._fullpageTagInput = tagInput;
 
-        document.getElementById('add-note-form').addEventListener('submit', async e => {
-            e.preventDefault();
-            const content = quill.root.innerHTML;
-            let title = e.target.title.value.trim();
+        // Focus content editor instead of title
+        setTimeout(() => this._fullpageQuill.focus(), 100);
 
-            // Auto-title logic
-            if (!title) {
-                const text = quill.getText().trim();
-                title = text.substring(0, 30) + (text.length > 30 ? '...' : '');
-                if (!title) title = 'Untitled Note';
+        // ESC Handler
+        if (!this._noteFullpageEscHandler) {
+            this._noteFullpageEscHandler = (e) => {
+                if (e.key === 'Escape') this.closeNoteFullpage();
+            };
+            document.addEventListener('keydown', this._noteFullpageEscHandler);
+        }
+
+        // Save Shortcut
+        this._noteFullpageSaveHandler = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                this.saveNoteFullpage(null);
             }
-
-            const tags = tagInput.getTags();
-
-            await api.createNote({
-                title: title,
-                content: content,
-                show_as_widget: e.target.show_as_widget.checked,
-                tags: tags
-            });
-
-            this.allNotes = await api.getNotes();
-            this.closeModal();
-            this.showToast('Note saved');
-
-            // Immediate update
-            if (this.currentPage === 'notes') this.renderNotesPage();
-            else if (this.currentPage === 'dashboard') await this.initDashboard();
-        });
+        };
+        document.addEventListener('keydown', this._noteFullpageSaveHandler);
     }
 
     async editNote(id) {
-        const note = this.allNotes.find(n => n.id === id);
-        if (!note) return;
-
-        let content = this.sanitizeContent(note.content);
-
-        const createdDate = note.created_at ? new Date(note.created_at).toLocaleString() : 'Unknown';
-        const updatedDate = note.updated_at ? new Date(note.updated_at).toLocaleString() : 'Unknown';
-
-        this.showModal('Edit Note', `<form id="edit-note-form">
-            <div style="margin-bottom:1rem; font-size:0.8rem; color:var(--text-muted);">
-                Created: ${createdDate} &bull; Updated: ${updatedDate}
-            </div>
-            <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${note.title}" required></div>
-            <div class="form-group"><label class="form-label">Content</label>
-                 <div id="edit-note-editor" style="height: 300px;">${content}</div>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Tags</label>
-                <div id="edit-note-tag-input-container"></div>
-            </div>
-            <div class="form-group"><label class="checkbox"><input type="checkbox" name="show_as_widget" ${note.show_as_widget ? 'checked' : ''}> Show on dashboard</label></div>
-            <div style="display:flex;gap:var(--spacing-sm)"><button type="submit" class="btn btn-primary" style="flex:1">Save</button><button type="button" class="btn" onclick="app.confirmDeleteNote(${id})">Delete</button></div>
-        </form>`);
-
-        const quill = new Quill('#edit-note-editor', {
-            theme: 'snow',
-            modules: {
-                toolbar: [
-                    [{ 'header': [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    ['blockquote', 'code-block'],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    ['clean']
-                ]
-            }
-        });
-
-        if (!quill) {
-            console.error('Failed to initialize Quill editor');
-            this.showToast('Error loading editor', 'error');
-            this.closeModal();
-            return;
-        }
-
-        // Add custom collapse button to toolbar
-        const toolbar = document.querySelector('.ql-toolbar');
-        if (toolbar) {
-            const collapseBtn = document.createElement('span');
-            collapseBtn.classList.add('ql-formats');
-            collapseBtn.style.marginLeft = 'auto';
-            collapseBtn.innerHTML = `<button type="button" class="ql-collapse" onclick="app.saveAndCloseModal()" title="Collapse & Save"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>`;
-            toolbar.appendChild(collapseBtn);
-        }
-
-        // Init Tag Input
-        const tagInput = new TagInput(document.getElementById('edit-note-tag-input-container'), note.tags || []);
-
-        document.getElementById('edit-note-form').addEventListener('submit', async e => {
-            e.preventDefault();
-            const content = quill.root.innerHTML;
-            const tags = tagInput.getTags();
-
-            await api.updateNote(id, {
-                title: e.target.title.value,
-                content: content,
-                show_as_widget: e.target.show_as_widget.checked,
-                tags: tags
-            });
-
-            this.allNotes = await api.getNotes();
-            this.closeModal();
-            this.showToast('Note updated');
-            if (this.currentPage === 'notes') this.renderNotesPage();
-            else this.refreshRecentWidgets('notes');
-        });
+        // Use fullpage editor for desktop
+        this.editNoteFullpage(id);
     }
 
     async viewNote(id) {
@@ -2798,27 +3239,307 @@ class App {
             this.refreshRecentWidgets('notes'); // Refresh recent notes on view
         } catch (e) { console.error("Failed to track view", e); }
 
-        const note = this.allNotes.find(n => n.id === id);
-        if (!note) return;
-        const safeContent = this.sanitizeContent(note.content);
-
-        const headerActions = `
-            <button class="btn btn-ghost btn-icon" onclick="app.closeModal(); app.editNote(${id});" title="Edit Note">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
-            <button class="btn btn-ghost btn-icon" onclick="app.confirmDeleteNote(${id})" title="Delete Note">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-        `;
-
-        this.showModal(note.title, `
-            <div class="note-view-content ql-editor" style="max-height: 70vh; overflow-y: auto; user-select: text; padding: var(--spacing-md); border-radius: var(--radius-md);">
-                ${note.is_code ? `<pre class="note-code"><code>${safeContent}</code></pre>` : safeContent}
-            </div>
-        `, headerActions);
+        // Use fullpage view for desktop
+        this.openNoteFullpage(id);
     }
 
-    // Alias for backward compatibility
+    // Full-page note viewing
+    openNoteFullpage(id) {
+        const note = this.allNotes.find(n => n.id === id);
+        if (!note) return;
+
+        const safeContent = this.sanitizeContent(note.content);
+        const tagsHtml = (note.tags && note.tags.length)
+            ? note.tags.map(t => `<span class="tag-pill">${t}</span>`).join('')
+            : '<span style="color: var(--color-text-tertiary)">No tags</span>';
+
+        const updatedDate = note.updated_at ? new Date(note.updated_at).toLocaleString() : 'Unknown';
+
+        const overlay = document.getElementById('note-fullpage-overlay');
+        overlay.innerHTML = `
+            <div class="note-fullpage-header">
+                <div class="note-fullpage-header-left">
+                    <button class="note-fullpage-back" onclick="app.closeNoteFullpage()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        Back
+                    </button>
+                    <h1 class="note-fullpage-title">${note.title}</h1>
+                </div>
+                <div class="note-fullpage-header-right">
+                    <span class="note-fullpage-meta">Last updated: ${updatedDate}</span>
+                    <button class="btn btn-primary" onclick="app.editNoteFullpage(${id})">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Edit
+                    </button>
+                    <button class="btn btn-ghost" onclick="app.confirmDeleteNoteFullpage(${id})" title="Delete Note">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="note-fullpage-content">
+                <div class="note-fullpage-content-inner">
+                    <div class="note-fullpage-view ql-editor">
+                        ${note.is_code ? `<pre class="note-code"><code>${safeContent}</code></pre>` : safeContent}
+                    </div>
+                    <div class="note-fullpage-tags">
+                        <div class="note-fullpage-tags-label">Tags</div>
+                        <div class="note-fullpage-tags-list">${tagsHtml}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Show the overlay with animation
+        requestAnimationFrame(() => {
+            overlay.classList.add('active');
+        });
+
+        // Add Keyboard handlers (ESC to close, E to edit)
+        this._noteFullpageKeyHandler = (e) => {
+            if (e.key === 'Escape') {
+                this.closeNoteFullpage();
+            } else if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                // Don't trigger if modifiers are pressed (like Cmd+E)
+                // and ensure we are not in an input/textarea if there were any (there aren't in view mode)
+                this.editNoteFullpage(id);
+            }
+        };
+        document.addEventListener('keydown', this._noteFullpageKeyHandler);
+    }
+
+    // Full-page note editing
+    async editNoteFullpage(id) {
+        this._isDirty = false; // Reset for new edit
+        this._currentFullpageNoteId = id;
+        const note = this.allNotes.find(n => n.id === id);
+        if (!note) return;
+
+        const content = this.sanitizeContent(note.content);
+        const createdDate = note.created_at ? new Date(note.created_at).toLocaleString() : 'Unknown';
+        const updatedDate = note.updated_at ? new Date(note.updated_at).toLocaleString() : 'Unknown';
+
+        const overlay = document.getElementById('note-fullpage-overlay');
+        overlay.innerHTML = `
+            <div class="note-fullpage-header">
+                <div class="note-fullpage-header-left">
+                    <button class="note-fullpage-back" onclick="app.closeNoteFullpage()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                        Cancel
+                    </button>
+                    <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" value="${note.title}" placeholder="Note title...">
+                </div>
+                <div class="note-fullpage-header-right">
+                    <span class="note-fullpage-meta">Created: ${createdDate}</span>
+                    <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(${id})">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Save
+                    </button>
+                </div>
+            </div>
+            <div class="note-fullpage-content">
+                <div class="note-fullpage-content-inner note-fullpage-editor">
+                    <div id="fullpage-note-editor">${content}</div>
+                </div>
+            </div>
+            <div class="note-fullpage-footer">
+                <div class="note-fullpage-footer-left">
+                    <label class="checkbox">
+                        <input type="checkbox" id="fullpage-note-widget" ${note.show_as_widget ? 'checked' : ''}>
+                        Show on dashboard
+                    </label>
+                </div>
+                <div class="note-fullpage-footer-right">
+                    <div style="display:flex;flex-direction:column;gap:var(--spacing-xs);">
+                        <label style="font-size:var(--font-size-sm);color:var(--color-text-secondary);">Tags</label>
+                        <div id="fullpage-note-tags"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Show the overlay with animation if not already active
+        if (!overlay.classList.contains('active')) {
+            requestAnimationFrame(() => {
+                overlay.classList.add('active');
+            });
+        }
+
+        // Initialize Quill editor
+        const quill = new Quill('#fullpage-note-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'list': 'check' }],
+                    ['link'],
+                    ['clean']
+                ]
+            }
+        });
+
+        if (!quill) {
+            console.error('Failed to initialize Quill editor');
+            this.showToast('Error loading editor', 'error');
+            this.closeNoteFullpage();
+            return;
+        }
+
+        // Store quill instance for save
+        this._fullpageQuill = quill;
+
+        // Track changes for dirty check
+        quill.on('text-change', () => {
+            this._isDirty = true;
+        });
+
+        const header = document.querySelector('.note-fullpage-header');
+        header?.addEventListener('input', () => {
+            this._isDirty = true;
+        });
+
+        // Initialize Tag Input
+        const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), note.tags || []);
+        this._fullpageTagInput = tagInput;
+
+        // Focus title input
+        document.getElementById('fullpage-note-title').focus();
+
+        // Add ESC key handler if not already added
+        if (!this._noteFullpageEscHandler) {
+            this._noteFullpageEscHandler = (e) => {
+                if (e.key === 'Escape') {
+                    this.closeNoteFullpage();
+                }
+            };
+            document.addEventListener('keydown', this._noteFullpageEscHandler);
+        }
+
+        // Keyboard shortcut for save (now handled globally in initKeyboardShortcuts)
+        // Leaving this here as it doesn't hurt, but the global one is now the primary
+        this._noteFullpageSaveHandler = (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                this.saveNoteFullpage(id);
+            }
+        };
+        document.addEventListener('keydown', this._noteFullpageSaveHandler);
+    }
+
+    // Save note from fullpage edit
+    async saveNoteFullpage(id) {
+        const title = document.getElementById('fullpage-note-title')?.value || 'Untitled';
+        const content = this._fullpageQuill?.root.innerHTML || '';
+        const tags = this._fullpageTagInput?.getTags() || [];
+        const showAsWidget = document.getElementById('fullpage-note-widget')?.checked || false;
+
+        const saveBtn = document.getElementById('fullpage-save-btn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+        }
+
+        try {
+            try {
+                if (id) {
+                    // UPDATE existing
+                    await api.updateNote(id, {
+                        title: title,
+                        content: content,
+                        show_as_widget: showAsWidget,
+                        tags: tags
+                    });
+                    this.showToast('Note updated');
+                } else {
+                    // CREATE new
+                    let displayTitle = title;
+                    if (!displayTitle || displayTitle === 'Untitled') {
+                        const text = this._fullpageQuill.getText().trim();
+                        displayTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
+                        if (!displayTitle) displayTitle = 'Untitled Note';
+                    }
+
+                    // If widget enabled, calculate position
+                    let wx = 0, wy = 0;
+                    if (showAsWidget) {
+                        const { x, y } = await this.getSmartBottomPosition(3, 2);
+                        wx = x; wy = y;
+                    }
+
+                    await api.createNote({
+                        title: displayTitle,
+                        content: content,
+                        show_as_widget: showAsWidget,
+                        tags: tags,
+                        widget_grid_x: wx,
+                        widget_grid_y: wy,
+                        widget_grid_w: 3,
+                        widget_grid_h: 2
+                    });
+                    this.showToast('Note created');
+                }
+                this._isDirty = false; // Clear before closing
+                this.closeNoteFullpage(true); // Force close
+
+                if (this.currentPage === 'notes') this.renderNotesPage();
+                else if (this.currentPage === 'dashboard') await this.initDashboard();
+                else this.refreshRecentWidgets('notes');
+            } catch (err) {
+                this.showToast('Failed to save note: ' + err.message, 'error');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+                }
+            }
+        } catch (error) {
+            console.error('Critical error in saveNoteFullpage:', error);
+            this.showToast('Critical error saving note', 'error');
+        }
+    }
+
+    // Close fullpage note view
+    closeNoteFullpage(force = false) {
+        if (!force && this._isDirty) {
+            if (!confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+                return;
+            }
+        }
+        const overlay = document.getElementById('note-fullpage-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+        this._isDirty = false;
+
+        // Remove event handlers
+        if (this._noteFullpageKeyHandler) {
+            document.removeEventListener('keydown', this._noteFullpageKeyHandler);
+            this._noteFullpageKeyHandler = null;
+        }
+        if (this._noteFullpageSaveHandler) {
+            document.removeEventListener('keydown', this._noteFullpageSaveHandler);
+            this._noteFullpageSaveHandler = null;
+        }
+
+        // Clear references
+        this._fullpageQuill = null;
+        this._fullpageTagInput = null;
+        this._currentFullpageNoteId = null;
+    }
+
+    // Delete note from fullpage view
+    async confirmDeleteNoteFullpage(id) {
+        if (confirm('Delete this note?')) {
+            await api.deleteNote(id);
+            this.allNotes = await api.getNotes();
+            this.closeNoteFullpage();
+            this.showToast('Note deleted');
+            if (this.currentPage === 'notes') this.renderNotesPage();
+            else await this.initDashboard();
+        }
+    }
+
+    // Alias for backward compatibility - now uses fullpage
     openNoteModal(id) { this.viewNote(id); }
 
     async confirmDeleteNote(id) {
@@ -2826,6 +3547,7 @@ class App {
             await api.deleteNote(id);
             this.allNotes = await api.getNotes();
             this.closeModal();
+            this.closeNoteFullpage();
             this.showToast('Note deleted');
             if (this.currentPage === 'notes') this.renderNotesPage();
             else await this.initDashboard();
@@ -2938,6 +3660,40 @@ class App {
             return;
         }
 
+        if (widget.widget_type === 'todo') {
+            this.showModal('Configure To-Do List', `<form id="widget-config-form">
+                <div class="form-group"><label class="form-label">List Title</label><input class="input" name="title" value="${widget.title}"></div>
+                
+                <div class="form-group">
+                    <label class="form-label">Display Mode</label>
+                    <select class="input" name="displayMode">
+                        <option value="compact" ${config.displayMode !== 'cozy' ? 'selected' : ''}>Compact (minimal spacing)</option>
+                        <option value="cozy" ${config.displayMode === 'cozy' ? 'selected' : ''}>Cozy (more breathing room)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group"><label class="checkbox"><input type="checkbox" name="showCompleted" ${config.showCompleted !== false ? 'checked' : ''}> Show completed tasks</label></div>
+                
+                <p class="help-text" style="margin-bottom: var(--spacing-md);">Tip: Drag items to reorder. Use arrow buttons to nest sub-tasks.</p>
+
+                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+            </form>`);
+
+            document.getElementById('widget-config-form').addEventListener('submit', async e => {
+                e.preventDefault();
+                const form = e.target;
+                const newConfig = {
+                    ...config,
+                    displayMode: form.displayMode.value,
+                    showCompleted: form.showCompleted.checked
+                };
+                await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
+                this.closeModal();
+                this.refreshWidget(widgetId);
+            });
+            return;
+        }
+
         if (widget.widget_type === 'clock') {
             this.showModal('Configure Clock Widget', `<form id="widget-config-form">
                 <div class="form-group"><label class="form-label">Widget Title</label><input class="input" name="title" value="${widget.title}"></div>
@@ -3004,6 +3760,259 @@ class App {
         await api.updateMe({ [key]: value });
         this.user[key] = value;
         this.showToast('Setting saved');
+    }
+
+    // ============================================
+    // To-Do Widget Logic
+    // ============================================
+
+    loadTodoWidget(container, widget) {
+        const items = widget.config.items || [];
+        const displayMode = widget.config.displayMode || 'compact'; // compact or cozy
+        const showCompleted = widget.config.showCompleted !== false;
+
+        // Separate active and completed items
+        const activeItems = items.filter(item => !item.completed);
+        const completedItems = items.filter(item => item.completed);
+        const completedCount = completedItems.length;
+        const totalCount = items.length;
+        const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+        const renderItem = (item, index) => `
+            <div class="todo-item ${item.completed ? 'completed' : ''}" 
+                 data-level="${item.level || 0}"
+                 draggable="true"
+                 data-index="${index}"
+                 data-widget-id="${widget.id}"
+                 onclick="app.toggleTodoItem(${widget.id}, ${index}, ${!item.completed})">
+                
+                <div class="todo-drag-handle">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="9" cy="19" r="2"/><circle cx="15" cy="5" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="15" cy="19" r="2"/></svg>
+                </div>
+
+                <div class="todo-checkbox"></div>
+                
+                <span class="todo-text">${item.text}</span>
+                
+                <div class="todo-actions">
+                    <button class="btn-icon" onclick="event.stopPropagation(); app.indentTodoItem(${widget.id}, ${index}, true)" title="Nest under previous">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8L7 12L3 16"/><line x1="21" y1="12" x2="7" y2="12"/></svg>
+                    </button>
+                    <button class="btn-icon" onclick="event.stopPropagation(); app.indentTodoItem(${widget.id}, ${index}, false)" title="Move to top level">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8L17 12L21 16"/><line x1="3" y1="12" x2="17" y2="12"/></svg>
+                    </button>
+                    <button class="btn-icon delete" onclick="event.stopPropagation(); app.deleteTodoItem(${widget.id}, ${index})" title="Remove task">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = `
+            <div class="todo-wrapper">
+                ${totalCount > 0 ? `
+                    <div class="todo-progress">
+                        <div class="todo-progress-bar">
+                            <div class="todo-progress-fill" style="width: ${progressPercent}%"></div>
+                        </div>
+                        <span class="todo-progress-text">${completedCount}/${totalCount}</span>
+                    </div>
+                ` : ''}
+
+                <form class="todo-add-form" onsubmit="event.preventDefault(); app.addTodoItem(${widget.id}, this.querySelector('input').value); this.querySelector('input').value='';">
+                    <input class="todo-add-input" placeholder="Add task..." required>
+                    <button type="submit" class="todo-add-btn" title="Add">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                </form>
+
+                <div class="todo-list ${displayMode}" id="todo-list-${widget.id}">
+                    ${items.length === 0 ? `
+                        <div class="todo-empty-state">
+                            <svg class="todo-empty-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                            <span>No tasks yet</span>
+                        </div>
+                    ` : ''}
+                    ${items.map((item, index) => renderItem(item, index)).join('')}
+                </div>
+            </div>
+        `;
+
+        this.initTodoDragAndDrop(widget.id);
+    }
+
+    initTodoDragAndDrop(widgetId) {
+        const list = document.getElementById(`todo-list-${widgetId}`);
+        if (!list) return;
+
+        let draggedItemIndex = null;
+
+        list.addEventListener('dragstart', (e) => {
+            const item = e.target.closest('.todo-item');
+            if (!item) return;
+            draggedItemIndex = parseInt(item.dataset.index);
+            item.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        list.addEventListener('dragend', (e) => {
+            const item = e.target.closest('.todo-item');
+            if (item) item.classList.remove('dragging');
+
+            const allItems = list.querySelectorAll('.todo-item');
+            allItems.forEach(i => i.classList.remove('drag-over'));
+        });
+
+        list.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const item = e.target.closest('.todo-item');
+            if (item) {
+                item.classList.add('drag-over');
+            }
+        });
+
+        list.addEventListener('dragleave', (e) => {
+            const item = e.target.closest('.todo-item');
+            if (item) {
+                item.classList.remove('drag-over');
+            }
+        });
+
+        list.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const targetItem = e.target.closest('.todo-item');
+            if (!targetItem) return;
+
+            const targetIndex = parseInt(targetItem.dataset.index);
+            if (draggedItemIndex === targetIndex) return;
+
+            const widgets = await api.getDashboardWidgets(this.dashboard.id);
+            const widget = widgets.find(w => w.id === widgetId);
+            if (!widget) return;
+
+            const items = widget.config.items;
+            const movingItem = items.splice(draggedItemIndex, 1)[0];
+            items.splice(targetIndex, 0, movingItem);
+
+            // Save and re-render
+            this.loadTodoWidget(document.getElementById(`widget-body-${widgetId}`), widget);
+            await api.updateWidget(widgetId, { config: widget.config });
+        });
+    }
+
+    async indentTodoItem(widgetId, index, indent) {
+        const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        const widget = widgets.find(w => w.id === widgetId);
+        if (!widget) return;
+
+        const items = widget.config.items;
+        const currentLevel = items[index].level || 0;
+
+        if (indent) {
+            // Max 2 levels of nesting (0, 1, 2)
+            items[index].level = Math.min(currentLevel + 1, 2);
+        } else {
+            items[index].level = Math.max(currentLevel - 1, 0);
+        }
+
+        this.loadTodoWidget(document.getElementById(`widget-body-${widgetId}`), widget);
+        await api.updateWidget(widgetId, { config: widget.config });
+    }
+
+    async toggleTodoItem(widgetId, index, completed) {
+        const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        const widget = widgets.find(w => w.id === widgetId);
+        if (!widget) return;
+
+        if (!widget.config.items) widget.config.items = [];
+        widget.config.items[index].completed = completed;
+
+        // Optimistic UI update
+        const body = document.getElementById(`widget-body-${widgetId}`);
+        if (body) this.loadTodoWidget(body, widget);
+
+        await api.updateWidget(widgetId, { config: widget.config });
+    }
+
+    async addTodoItem(widgetId, text) {
+        if (!text.trim()) return;
+        const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        const widget = widgets.find(w => w.id === widgetId);
+        if (!widget) return;
+
+        if (!widget.config.items) widget.config.items = [];
+        widget.config.items.push({ text: text.trim(), completed: false });
+
+        const body = document.getElementById(`widget-body-${widgetId}`);
+        if (body) this.loadTodoWidget(body, widget);
+
+        await api.updateWidget(widgetId, { config: widget.config });
+    }
+
+    async deleteTodoItem(widgetId, index) {
+        const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        const widget = widgets.find(w => w.id === widgetId);
+        if (!widget) return;
+
+        // Store deleted item for undo
+        const deletedItem = widget.config.items[index];
+        widget.config.items.splice(index, 1);
+
+        const body = document.getElementById(`widget-body-${widgetId}`);
+        if (body) this.loadTodoWidget(body, widget);
+
+        // Save immediately
+        await api.updateWidget(widgetId, { config: widget.config });
+
+        // Show undo toast
+        this.showUndoToast('Task deleted', async () => {
+            // Restore the item
+            const freshWidgets = await api.getDashboardWidgets(this.dashboard.id);
+            const freshWidget = freshWidgets.find(w => w.id === widgetId);
+            if (!freshWidget) return;
+
+            freshWidget.config.items.splice(index, 0, deletedItem);
+            await api.updateWidget(widgetId, { config: freshWidget.config });
+
+            const freshBody = document.getElementById(`widget-body-${widgetId}`);
+            if (freshBody) this.loadTodoWidget(freshBody, freshWidget);
+
+            this.showToast('Task restored');
+        });
+    }
+
+    showUndoToast(message, undoCallback) {
+        // Remove any existing undo toast
+        const existingToast = document.querySelector('.toast.undo-toast');
+        if (existingToast) existingToast.remove();
+
+        const toast = document.createElement('div');
+        toast.className = 'toast undo-toast';
+        toast.innerHTML = `
+            <span>${message}</span>
+            <button class="toast-undo-btn">Undo</button>
+        `;
+
+        document.body.appendChild(toast);
+
+        // Animate in
+        requestAnimationFrame(() => toast.classList.add('show'));
+
+        let undone = false;
+        const undoBtn = toast.querySelector('.toast-undo-btn');
+        undoBtn.onclick = () => {
+            undone = true;
+            undoCallback();
+            toast.remove();
+        };
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (!undone) {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 5000);
     }
 }
 

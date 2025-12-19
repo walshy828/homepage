@@ -77,7 +77,11 @@ async def create_note(
         color=note_data.color,
         is_pinned=note_data.is_pinned,
         tags=note_data.tags,
-        show_as_widget=note_data.show_as_widget
+        show_as_widget=note_data.show_as_widget,
+        widget_grid_x=note_data.widget_grid_x or 0,
+        widget_grid_y=note_data.widget_grid_y or 0,
+        widget_grid_w=note_data.widget_grid_w or 3,
+        widget_grid_h=note_data.widget_grid_h or 2
     )
     db.add(note)
     await db.flush()

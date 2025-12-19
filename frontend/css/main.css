@@ -249,7 +249,6 @@ h4 {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    min-width: 200px;
     justify-content: flex-end;
 }
 
@@ -574,6 +573,28 @@ a:hover {
         transform: translateX(0);
         opacity: 1;
     }
+}
+
+/* Undo Toast */
+.toast.undo-toast {
+    justify-content: space-between;
+    min-width: 200px;
+}
+
+.toast-undo-btn {
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.toast-undo-btn:hover {
+    background: var(--color-accent-hover);
 }
 
 /* Modal */
@@ -943,7 +964,7 @@ a:hover {
 /* Search Bar */
 .search-container {
     flex: 1;
-    max-width: 600px;
+    max-width: none;
     position: relative;
     z-index: 101;
     /* Above other header elements */
@@ -1100,11 +1121,74 @@ a:hover {
     position: relative;
 }
 
+.badge-new {
+    background: var(--color-accent);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    vertical-align: middle;
+    margin-right: var(--spacing-xs);
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    box-shadow: var(--shadow-sm);
+    animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 .btn-icon-only {
     width: 40px;
     height: 40px;
     padding: 0;
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-lg);
+}
+
+/* Add button with dropdown indicator */
+.btn-add-dropdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 var(--spacing-sm);
+    width: auto;
+    min-width: 40px;
+    height: 40px;
+    border-radius: var(--radius-lg);
+}
+
+.btn-add-dropdown .add-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.btn-add-dropdown .dropdown-arrow {
+    width: 12px;
+    height: 12px;
+    margin-left: 2px;
+    opacity: 0.8;
+    transition: transform var(--transition-fast);
+}
+
+.btn-add-dropdown:hover .dropdown-arrow {
+    transform: translateY(1px);
 }
 
 .dropdown-menu {
@@ -1223,4 +1307,249 @@ a:hover {
     padding: 2px 6px;
     border-radius: 4px;
     border: 1px solid var(--color-border);
+}
+
+/* ============================================
+   Full-Page Note View
+   Distraction-free, maximized note viewing/editing
+   ============================================ */
+
+.note-fullpage-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--color-bg-primary);
+    z-index: var(--z-modal);
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform var(--transition-slow);
+    opacity: 0;
+    visibility: hidden;
+}
+
+.note-fullpage-overlay.active {
+    transform: translateX(0);
+    opacity: 1;
+    visibility: visible;
+}
+
+.note-fullpage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md) var(--spacing-xl);
+    background: var(--color-bg-widget);
+    border-bottom: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.note-fullpage-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.note-fullpage-back {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.note-fullpage-back:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+}
+
+.note-fullpage-title {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0;
+}
+
+.note-fullpage-title-input {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: var(--spacing-xs) 0;
+    min-width: 300px;
+    transition: border-color var(--transition-fast);
+}
+
+.note-fullpage-title-input:focus {
+    outline: none;
+    border-bottom-color: var(--color-accent);
+}
+
+.note-fullpage-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.note-fullpage-meta {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-tertiary);
+    margin-right: var(--spacing-md);
+}
+
+.note-fullpage-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-xl);
+    display: flex;
+    justify-content: center;
+}
+
+.note-fullpage-content-inner {
+    width: 100%;
+    max-width: 900px;
+}
+
+/* View Mode Content */
+.note-fullpage-view {
+    line-height: 1.8;
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+}
+
+.note-fullpage-view.ql-editor {
+    padding: 0;
+    border: none;
+}
+
+.note-fullpage-view h1,
+.note-fullpage-view h2,
+.note-fullpage-view h3 {
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-md);
+}
+
+.note-fullpage-view p {
+    margin-bottom: var(--spacing-md);
+}
+
+.note-fullpage-view pre {
+    background: var(--color-bg-tertiary);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+}
+
+/* Edit Mode - Quill Editor */
+.note-fullpage-editor {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.note-fullpage-editor .ql-toolbar {
+    flex-shrink: 0;
+    background: var(--color-bg-widget);
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.note-fullpage-editor .ql-container {
+    flex: 1;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    font-size: var(--font-size-base);
+    min-height: 400px;
+}
+
+.note-fullpage-editor .ql-editor {
+    min-height: 100%;
+    line-height: 1.8;
+}
+
+/* Tags section in fullpage view */
+.note-fullpage-tags {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-border-light);
+}
+
+.note-fullpage-tags-label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.note-fullpage-tags-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+/* Footer actions for edit mode */
+.note-fullpage-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-xl);
+    background: var(--color-bg-widget);
+    border-top: 1px solid var(--color-border);
+    flex-shrink: 0;
+}
+
+.note-fullpage-footer-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.note-fullpage-footer-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .note-fullpage-header {
+        padding: var(--spacing-md);
+        flex-wrap: wrap;
+        gap: var(--spacing-sm);
+    }
+
+    .note-fullpage-content {
+        padding: var(--spacing-md);
+    }
+
+    .note-fullpage-title {
+        font-size: var(--font-size-lg);
+    }
+
+    .note-fullpage-title-input {
+        min-width: 150px;
+        font-size: var(--font-size-lg);
+    }
+
+    .note-fullpage-footer {
+        padding: var(--spacing-md);
+        flex-direction: column;
+        gap: var(--spacing-md);
+    }
+
+    .note-fullpage-footer-right {
+        width: 100%;
+    }
+
+    .note-fullpage-footer-right .btn {
+        flex: 1;
+    }
 }

@@ -82,7 +82,7 @@ class DashboardResponse(BaseModel):
 
 class WidgetCreate(BaseModel):
     dashboard_id: int
-    widget_type: str = Field(pattern="^(links|notes|weather|docker|proxmox|search|clock)$")
+    widget_type: str = Field(pattern="^(links|notes|weather|docker|proxmox|search|clock|todo)$")
     title: str = Field(default="Widget", max_length=255)
     grid_x: int = Field(default=0, ge=0)
     grid_y: int = Field(default=0, ge=0)
@@ -192,6 +192,10 @@ class NoteCreate(BaseModel):
     is_pinned: bool = False
     tags: List[str] = Field(default_factory=list)
     show_as_widget: bool = False
+    widget_grid_x: Optional[int] = None
+    widget_grid_y: Optional[int] = None
+    widget_grid_w: Optional[int] = None
+    widget_grid_h: Optional[int] = None
 
 
 class NoteUpdate(BaseModel):
