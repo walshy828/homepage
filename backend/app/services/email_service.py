@@ -17,7 +17,9 @@ class EmailService:
     def __init__(self):
         self.enabled = settings.is_email_configured
         if not self.enabled:
-            logger.warning("Email service is not configured. Emails will be logged but not sent.")
+            print("WARNING: Email service is not configured. Emails will be logged but not sent.")
+        else:
+            print(f"INFO: Email service configured. Using host: {settings.smtp_host}")
 
     async def send_email(
         self, 
@@ -28,8 +30,8 @@ class EmailService:
     ) -> bool:
         """Send an email."""
         if not self.enabled:
-            logger.info(f"DRY RUN: Sending email to {to_email} with subject: {subject}")
-            logger.info(f"Content: {text_content}")
+            print(f"DRY RUN: Sending email to {to_email} with subject: {subject}")
+            print(f"Content: {text_content}")
             return True
 
         message = MIMEMultipart("alternative")

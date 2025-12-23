@@ -2,6 +2,7 @@
 Homepage Dashboard - Main FastAPI Application
 """
 import os
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,14 @@ from fastapi.responses import FileResponse
 
 from app.core.config import settings
 from app.core.database import init_db
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:     %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 from app.api.routers import (
     auth_router,
     dashboards_router,

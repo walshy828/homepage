@@ -17,6 +17,12 @@ services:
       - PROXMOX_USER=${PROXMOX_USER:-}
       - PROXMOX_TOKEN_NAME=${PROXMOX_TOKEN_NAME:-}
       - PROXMOX_TOKEN_VALUE=${PROXMOX_TOKEN_VALUE:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
+      - SMTP_TLS=${SMTP_TLS:-True}
     volumes:
       - ./data:/app/data
       - ./backend/app:/app/app
