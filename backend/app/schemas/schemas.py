@@ -145,6 +145,7 @@ class LinkCreate(BaseModel):
     url: str
     title: Optional[str] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
     category: str = "uncategorized"
     custom_tags: List[str] = Field(default_factory=list)
     is_pinned: bool = False
@@ -156,6 +157,7 @@ class LinkUpdate(BaseModel):
     url: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
     category: Optional[str] = None
     custom_tags: Optional[List[str]] = None
     is_pinned: Optional[bool] = None
@@ -174,6 +176,7 @@ class LinkResponse(BaseModel):
     title: str
     description: Optional[str]
     favicon_url: Optional[str]
+    image_url: Optional[str]
     custom_icon: Optional[str]
     category: str
     is_ai_categorized: bool

@@ -103,12 +103,26 @@ async def create_link(
         url=link_data.url,
         title=title,
         description=link_data.description,
+        image_url=link_data.image_url,
         category=link_data.category,
         custom_tags=link_data.custom_tags,
         is_pinned=link_data.is_pinned,
         widget_id=link_data.widget_id,
         custom_icon=link_data.custom_icon
     )
+    
+    # Auto-fetch metadata if title or description or image is missing
+    if not link_data.title or not link_data.description or not link_data.image_url:
+        try:
+            preview = await preview_link(link_data.url)
+            if not link_data.title and preview.title:
+                link.title = preview.title
+            if not link_data.description and preview.description:
+                link.description = preview.description
+            if not link_data.image_url and preview.image:
+                link.image_url = preview.image
+        except Exception:
+            pass
     
     # Auto-categorize with AI if requested
     if auto_categorize and link_data.category == "uncategorized":
@@ -280,6 +294,8 @@ async def update_link(
         link.title = link_data.title
     if link_data.description is not None:
         link.description = link_data.description
+    if link_data.image_url is not None:
+        link.image_url = link_data.image_url
     if link_data.category is not None:
         link.category = link_data.category
         link.is_ai_categorized = False

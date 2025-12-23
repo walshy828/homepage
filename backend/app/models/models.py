@@ -87,6 +87,7 @@ class Link(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     favicon_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     custom_icon: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # Emoji icon or URL for internal links
     
     # Categorization

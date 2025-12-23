@@ -891,7 +891,8 @@ class App {
             <div id="toast-container" class="toast-container"></div>
             <div id="modal-overlay" class="modal-overlay"></div>
             <div id="note-fullpage-overlay" class="note-fullpage-overlay"></div>
-            <div id="keyboard-help-overlay" class="keyboard-help-overlay"></div>`;
+            <div id="keyboard-help-overlay" class="keyboard-help-overlay"></div>
+            <div id="link-preview-card" class="link-preview-card"></div>`;
 
         this.updateThemeIcon();
         this.initKeyboardShortcuts();
@@ -902,6 +903,9 @@ class App {
 
         // Initialize Add Menu
         this.initAddMenu();
+
+        // Initialize Link Previews
+        this.initLinkPreviews();
     }
 
     initAddMenu() {
@@ -1633,6 +1637,185 @@ class App {
         if (form) form.requestSubmit();
     }
 
+    // ============================================
+    // Link Preview Logic
+    // ============================================
+
+    initLinkPreviews() {
+        if (this._linkPreviewsInitialized) return;
+        this._linkPreviewsInitialized = true;
+
+        const previewCard = document.getElementById('link-preview-card');
+        // We wait for it to exist in the DOM if called too early, 
+        // but it's called after innerHTML is set in renderApp.
+
+        let currentTarget = null;
+        let hoverTimeout = null;
+
+        // Global delegate listener for hover events on links
+        document.addEventListener('mouseover', (e) => {
+            const linkEl = e.target.closest('.link-icon-item, .link-item, .link-card, .list-item a, .search-result[data-type="link"]');
+
+            if (!linkEl) {
+                if (currentTarget) {
+                    console.log('Preview: Leaving link zone');
+                    currentTarget = null;
+                    if (hoverTimeout) clearTimeout(hoverTimeout);
+                    this.hideLinkPreview();
+                }
+                return;
+            }
+
+            if (linkEl === currentTarget) return; // Already hovering this link
+
+            console.log('Preview: Entering link', linkEl);
+            currentTarget = linkEl;
+
+            // Don't show preview in edit mode
+            if (this.editMode) {
+                console.log('Preview: Blocked by edit mode');
+                return;
+            }
+
+            const linkId = linkEl.dataset.id || (linkEl.closest('[data-id]')?.dataset.id);
+            if (!linkId) {
+                console.log('Preview: No linkId found on element');
+                return;
+            }
+
+            console.log('Preview: Setting timeout for linkId', linkId);
+            if (hoverTimeout) clearTimeout(hoverTimeout);
+            hoverTimeout = setTimeout(() => {
+                console.log('Preview: Showing preview for linkId', linkId);
+                this.showLinkPreview(linkId, linkEl);
+            }, 300);
+        });
+
+        document.addEventListener('mouseout', (e) => {
+            const toElement = e.relatedTarget;
+            const linkEl = e.target.closest('.link-icon-item, .link-item, .link-card, .list-item a, .search-result[data-type="link"]');
+
+            // If moved to something outside the current link
+            if (linkEl && (!toElement || !linkEl.contains(toElement))) {
+                currentTarget = null;
+                if (hoverTimeout) clearTimeout(hoverTimeout);
+                this.hideLinkPreview();
+            }
+        });
+
+        // Hide on scroll or click
+        window.addEventListener('scroll', () => this.hideLinkPreview(), { passive: true });
+        document.addEventListener('click', () => this.hideLinkPreview());
+    }
+
+    async showLinkPreview(linkId, targetEl) {
+        console.log(`Preview: [Step 1] showLinkPreview called for ID: ${linkId}`);
+        const id = parseInt(linkId);
+        if (isNaN(id)) {
+            console.error('Preview: [Error] Invalid linkId', linkId);
+            return;
+        }
+
+        // Ensure allLinks is populated
+        if (!this.allLinks || this.allLinks.length === 0) {
+            console.log('Preview: [Step 2] allLinks is empty, fetching...');
+            try {
+                this.allLinks = await api.getLinks();
+                console.log('Preview: [Step 2] Fetched links, count:', this.allLinks.length);
+            } catch (err) {
+                console.error('Preview: [Error] Failed to fetch links', err);
+                return;
+            }
+        }
+
+        const link = this.allLinks.find(l => l.id === id);
+        if (!link) {
+            console.warn(`Preview: [Warning] Link ID ${id} not found in allLinks. Current count: ${this.allLinks.length}`);
+            // If not found, it might be a new link or something. Try a quick refresh of the list.
+            console.log('Preview: Attempting to refresh link list...');
+            try {
+                this.allLinks = await api.getLinks();
+                const refreshedLink = this.allLinks.find(l => l.id === id);
+                if (!refreshedLink) {
+                    console.error(`Preview: [Error] Link ID ${id} still not found after refresh.`);
+                    return;
+                }
+                return this.showLinkPreview(linkId, targetEl); // Retry once
+            } catch (err) {
+                return;
+            }
+        }
+
+        console.log('Preview: [Step 3] Found link:', link.title);
+        const previewCard = document.getElementById('link-preview-card');
+        if (!previewCard) {
+            console.error('Preview: #link-preview-card not found in DOM');
+            return;
+        }
+
+        const rect = targetEl.getBoundingClientRect();
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+
+        // Build content
+        const tagsHtml = (link.custom_tags && link.custom_tags.length)
+            ? `<div class="link-preview-tags">${link.custom_tags.map(t => `<span class="link-preview-tag">${t}</span>`).join('')}</div>`
+            : '';
+
+        const iconUrl = link.custom_icon && link.custom_icon.match(/^(http|www)/)
+            ? link.custom_icon
+            : this.getFaviconUrl(link.url);
+
+        const previewImageUrl = link.image_url || iconUrl;
+        const age = this.timeAgo(link.created_at);
+
+        previewCard.innerHTML = `
+            <div class="link-preview-image-container">
+                <img src="${previewImageUrl}" class="link-preview-image" onerror="this.src='${iconUrl}'; this.onerror=function(){this.style.display='none'; this.nextElementSibling.style.display='block';}">
+                <div class="link-preview-placeholder" style="display:none;">🔗</div>
+            </div>
+            <div class="link-preview-body">
+                <div class="link-preview-title">${link.title}</div>
+                <div class="link-preview-url">${link.url.replace(/^https?:\/\//, '')}</div>
+                ${link.description ? `<div class="link-preview-description">${this.sanitizeContent(link.description)}</div>` : ''}
+                ${tagsHtml}
+            </div>
+            <div class="link-preview-footer">
+                <div class="link-preview-stats">
+                    <span title="Click count">🖱️ ${link.click_count || 0}</span>
+                </div>
+                <span>Added ${age}</span>
+            </div>
+        `;
+
+        // Position logic
+        let left = rect.left + (rect.width / 2) - 160; // Center horz
+        let top = rect.bottom + 10; // Below
+
+        // Keep on screen
+        if (left < 10) left = 10;
+        if (left + 320 > winWidth - 10) left = winWidth - 330;
+
+        // Flip to top if not enough room below
+        const cardHeight = previewCard.offsetHeight || 300;
+        if (top + cardHeight > winHeight - 10) {
+            top = rect.top - cardHeight - 10;
+            // If still no room, just place at bottom with padding
+            if (top < 10) top = rect.bottom + 10;
+        }
+
+        previewCard.style.left = `${left}px`;
+        previewCard.style.top = `${top}px`;
+        previewCard.classList.add('active');
+    }
+
+    hideLinkPreview() {
+        const previewCard = document.getElementById('link-preview-card');
+        if (previewCard) {
+            previewCard.classList.remove('active');
+        }
+    }
+
     renderWidgetContent(widget) {
         return `<div class="widget ${widget.widget_type}-widget" data-id="${widget.id}" data-type="${widget.widget_type}">
             <div class="widget-header">
@@ -1763,23 +1946,6 @@ class App {
             this.initLinkDragReorder(body, widget.id);
         }
 
-        // Link Preview Hover Logic
-        if (config.showPreviews !== false && !this.editMode) {
-
-            const linkElements = body.querySelectorAll('a.link-item, a.link-icon-item');
-            linkElements.forEach(el => {
-                el.addEventListener('mouseenter', (e) => {
-
-                    this.showLinkPreview(e, el.dataset.url);
-                });
-                el.addEventListener('mouseleave', () => {
-
-                    this.hideLinkPreview();
-                });
-            });
-        } else {
-
-        }
 
         if (config.autoFit) {
             // Slight delay to ensure DOM is rendered calculation is correct
@@ -1787,66 +1953,6 @@ class App {
         }
     }
 
-    // Link Preview Methods
-    showLinkPreview(event, url) {
-        if (this.previewTimeout) clearTimeout(this.previewTimeout);
-        this.previewTimeout = setTimeout(async () => {
-
-            let card = document.getElementById('link-preview-card');
-            if (!card) {
-                card = document.createElement('div');
-                card.id = 'link-preview-card';
-                card.className = 'link-preview-card';
-                document.body.appendChild(card);
-            }
-
-            // Position card near cursor but not under it
-            const x = event.clientX + 20;
-            const y = event.clientY + 20;
-
-            // Adjust if out of bounds (basic)
-            const winWidth = window.innerWidth;
-            const winHeight = window.innerHeight;
-
-            let finalX = x;
-            let finalY = y;
-
-            if (x + 300 > winWidth) finalX = event.clientX - 320;
-            if (y + 200 > winHeight) finalY = event.clientY - 220;
-
-            card.style.left = `${finalX}px`;
-            card.style.top = `${finalY}px`;
-            card.innerHTML = `<div class="spinner" style="margin: 20px auto;"></div>`;
-            card.classList.add('visible');
-
-            try {
-                const data = await api.getLinkPreview(url);
-
-                if (data.title) {
-                    card.innerHTML = `
-                        ${data.image ? `<img src="${data.image}" class="link-preview-image">` : ''}
-                        <div class="link-preview-content">
-                            <div class="link-preview-title">${data.title}</div>
-                            ${data.description ? `<div class="link-preview-desc">${data.description}</div>` : ''}
-                        </div>
-                    `;
-                } else {
-                    card.innerHTML = `<div class="link-preview-content"><div class="link-preview-title">No preview available</div></div>`;
-                }
-            } catch (e) {
-                console.error('Preview fetch error:', e);
-                card.classList.remove('visible');
-            }
-        }, 600); // 600ms delay
-    }
-
-    hideLinkPreview() {
-        if (this.previewTimeout) clearTimeout(this.previewTimeout);
-        const card = document.getElementById('link-preview-card');
-        if (card) {
-            card.classList.remove('visible');
-        }
-    }
 
     autoFitWidget(widgetId) {
         if (!this.grid) return;
@@ -2940,7 +3046,7 @@ class App {
             tagsHtml = `<div class="link-card-tags">${l.custom_tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`;
         }
         return `
-            <div class="link-card" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
+            <div class="link-card" data-id="${l.id}" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
                 <div class="link-card-header">
                     <div class="link-card-icon">
                         ${l.custom_icon ?
@@ -2972,7 +3078,7 @@ class App {
             : `<img src="${this.getFaviconUrl(l.url)}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`;
 
         return `
-        <div class="list-item">
+        <div class="list-item" data-id="${l.id}">
             <div class="list-item-icon">${iconHtml}</div>
             <div class="list-item-content">
                 <div class="list-item-title"><a href="${l.url}" target="_blank" style="color:inherit; text-decoration:none;">${l.title}</a></div>
@@ -3048,7 +3154,9 @@ class App {
 
         this.showModal('Add Link', `<form id="add-link-form">
             <div class="form-group"><label class="form-label">URL</label><input type="url" class="input" name="url" placeholder="https://example.com" required value="${initialUrl}"></div>
-            <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" placeholder="Optional - Auto-fetched"></div>
+            <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" id="link-title-input" placeholder="Optional - Auto-fetched"></div>
+            <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" id="link-desc-input" rows="2" placeholder="Optional - Auto-fetched preview text"></textarea></div>
+            <input type="hidden" name="image_url" id="link-image-input">
             <div class="form-group"><label class="form-label">Custom Icon</label><input class="input" name="custom_icon" placeholder="Emoji or https://..."></div>
 
             <div class="form-group">
@@ -3083,7 +3191,38 @@ class App {
         const urlInput = document.querySelector('#add-link-form [name="url"]');
         setTimeout(() => urlInput.focus(), 100);
 
-        // Auto-prefix https:// as user types
+        // Auto-fetch metadata as user types URL
+        urlInput.addEventListener('blur', async (e) => {
+            const url = e.target.value.trim();
+            if (!url || !url.startsWith('http')) return;
+
+            const titleInput = document.getElementById('link-title-input');
+            const descInput = document.getElementById('link-desc-input');
+            const imgInput = document.getElementById('link-image-input');
+
+            // Show loading state in inputs if they are empty
+            if (titleInput && !titleInput.value) titleInput.placeholder = 'Fetching title...';
+            if (descInput && !descInput.value) descInput.placeholder = 'Fetching description...';
+
+            try {
+                const preview = await api.getLinkPreview(url);
+                if (preview.title && titleInput && !titleInput.value) {
+                    titleInput.value = preview.title;
+                }
+                if (preview.description && descInput && !descInput.value) {
+                    descInput.value = preview.description;
+                }
+                if (preview.image && imgInput && !imgInput.value) {
+                    imgInput.value = preview.image;
+                }
+            } catch (err) {
+                console.warn('Metadata fetch failed', err);
+            } finally {
+                if (titleInput) titleInput.placeholder = 'Optional - Auto-fetched';
+                if (descInput) descInput.placeholder = 'Optional - Auto-fetched preview text';
+            }
+        });
+
         urlInput.addEventListener('input', (e) => {
             let value = e.target.value;
             // Only auto-prefix if user has typed something and it doesn't already have a protocol
@@ -3172,6 +3311,8 @@ class App {
                 await api.createLink({
                     url,
                     title,
+                    description: form.description.value.trim() || null,
+                    image_url: form.image_url.value || null,
                     widget_id: widgetId,
                     custom_icon,
                     custom_tags: tags,
@@ -3207,6 +3348,7 @@ class App {
         this.showModal('Edit Link', `<form id="edit-link-form">
             <div class="form-group"><label class="form-label">URL</label><input class="input" name="url" value="${link.url}" required></div>
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${link.title}"></div>
+            <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" rows="2">${link.description || ''}</textarea></div>
             <div class="form-group"><label class="form-label">Custom Icon</label><input class="input" name="custom_icon" value="${link.custom_icon || ''}" placeholder="Emoji or URL"></div>
 
             <div class="form-group">
@@ -3274,6 +3416,36 @@ class App {
             }
         };
 
+        // Add Refresh Metadata button logic for Edit Modal
+        const refreshMetaBtn = document.createElement('button');
+        refreshMetaBtn.type = 'button';
+        refreshMetaBtn.className = 'btn btn-sm btn-ghost';
+        refreshMetaBtn.style.fontSize = '0.8rem';
+        refreshMetaBtn.innerHTML = '🔄 Refresh Meta';
+        refreshMetaBtn.onclick = async () => {
+            const url = urlInput.value.trim();
+            if (!url) return;
+            refreshMetaBtn.textContent = 'Fetching...';
+            try {
+                const preview = await api.getLinkPreview(url);
+                if (preview.title) titleInput.value = preview.title;
+                const descInput = document.querySelector('#edit-link-form [name="description"]');
+                if (preview.description && descInput) descInput.value = preview.description;
+                this.showToast('Metadata refreshed');
+                this._isDirty = true;
+            } catch (err) {
+                this.showToast('Failed to fetch metadata', 'error');
+            } finally {
+                refreshMetaBtn.innerHTML = '🔄 Refresh Meta';
+            }
+        };
+        // Insert near title label
+        const titleLabel = titleInput.parentElement.querySelector('label');
+        titleLabel.style.display = 'flex';
+        titleLabel.style.justifyContent = 'space-between';
+        titleLabel.style.alignItems = 'center';
+        titleLabel.appendChild(refreshMetaBtn);
+
         document.getElementById('edit-link-form').addEventListener('submit', async e => {
             e.preventDefault();
             const form = e.target;
@@ -3295,6 +3467,7 @@ class App {
             await api.updateLink(id, {
                 url: form.url.value,
                 title: form.title.value,
+                description: form.description.value.trim() || null,
                 custom_icon: form.custom_icon.value || null,
                 custom_tags: tags,
                 category
