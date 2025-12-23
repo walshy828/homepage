@@ -23,6 +23,7 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
       - SMTP_TLS=${SMTP_TLS:-True}
+      - BASE_URL=${BASE_URL:-http://localhost:8000}
     volumes:
       - ./data:/app/data
       - ./backend/app:/app/app
