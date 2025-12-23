@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "Homepage Dashboard"
     debug: bool = False
+    base_url: str = "http://localhost:8000"
     
     # Security
     secret_key: str = "change-me-in-production"
@@ -60,6 +61,18 @@ class Settings(BaseSettings):
             self.proxmox_token_name,
             self.proxmox_token_value
         ])
+    
+    # Email (SMTP)
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: str = "noreply@example.com"
+    smtp_tls: bool = True
+    
+    @property
+    def is_email_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_user and self.smtp_password)
 
 
 settings = Settings()

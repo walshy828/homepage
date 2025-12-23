@@ -96,6 +96,21 @@ class API {
         return this.request(`/links/tags/suggest?${qs}`);
     }
     async getLinkCategories() { return this.request('/links/categories'); }
+
+    async requestPasswordReset(email) {
+        return this.request('/auth/forgot-password', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        });
+    }
+
+    async resetPassword(token, newPassword) {
+        return this.request('/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ token, new_password: newPassword }),
+        });
+    }
+
     async getNotes(params = {}) { return this.request(`/notes?${new URLSearchParams(params)}`); }
     async createNote(data) { return this.request('/notes', { method: 'POST', body: JSON.stringify(data) }); }
     async updateNote(id, data) { return this.request(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }

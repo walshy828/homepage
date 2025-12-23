@@ -406,6 +406,17 @@ class App {
 
     async init() {
         this.initTheme();
+
+        // Handle Password Reset Routing
+        const urlParams = new URLSearchParams(window.location.search);
+        const resetToken = urlParams.get('token');
+        if (resetToken) {
+            this.showResetPassword(resetToken);
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+        }
+
         if (!api.token) { this.showAuth(); return; }
         // Show loading while checking auth
         document.getElementById('app').innerHTML = '<div class="auth-page"><div class="loading-state"><span class="spinner"></span><p>Loading dashboard...</p></div></div>';
@@ -443,7 +454,7 @@ class App {
             : '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
     }
 
-    showAuth() {
+    showAuth(errorMessage = null) {
         document.getElementById('app').innerHTML = `
             <div class="auth-page"><div class="auth-card">
                 <div class="auth-header">
@@ -451,25 +462,57 @@ class App {
                     <h1 class="auth-title">Homepage Dashboard</h1>
                     <p class="auth-subtitle">Sign in to your dashboard</p>
                 </div>
+                ${errorMessage ? `<div class="auth-error" id="auth-error">${errorMessage}</div>` : '<div class="auth-error" id="auth-error" style="display: none;"></div>'}
                 <form id="login-form">
-                    <div class="form-group"><label class="form-label">Username or Email</label><input type="text" class="input" name="username" required></div>
-                    <div class="form-group"><label class="form-label">Password</label><input type="password" class="input" name="password" required></div>
+                    <div class="form-group">
+                        <label class="form-label">Username or Email</label>
+                        <input type="text" class="input" name="username" required autocomplete="username">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="input" id="login-password" name="password" required autocomplete="current-password">
+                            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('login-password')" title="Show password">
+                                <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="auth-links" style="text-align: right; margin-bottom: var(--spacing-md);">
+                        <a href="#" id="forgot-password" style="font-size: 0.875rem; color: var(--color-accent);">Forgot password?</a>
+                    </div>
                     <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Sign In</button>
                 </form>
                 <div class="auth-footer">Don't have an account? <a href="#" id="show-register">Sign up</a></div>
             </div></div>`;
         document.getElementById('login-form').addEventListener('submit', e => this.handleLogin(e));
         document.getElementById('show-register').addEventListener('click', e => { e.preventDefault(); this.showRegister(); });
+        document.getElementById('forgot-password').addEventListener('click', e => { e.preventDefault(); this.showForgotPassword(); });
     }
 
     showRegister() {
         document.getElementById('app').innerHTML = `
             <div class="auth-page"><div class="auth-card">
                 <div class="auth-header"><h1 class="auth-title">Create Account</h1><p class="auth-subtitle">Start building your dashboard</p></div>
+                <div class="auth-error" id="auth-error" style="display: none;"></div>
                 <form id="register-form">
-                    <div class="form-group"><label class="form-label">Email</label><input type="email" class="input" name="email" required></div>
-                    <div class="form-group"><label class="form-label">Username</label><input type="text" class="input" name="username" required minlength="3"></div>
-                    <div class="form-group"><label class="form-label">Password</label><input type="password" class="input" name="password" required minlength="6"></div>
+                    <div class="form-group"><label class="form-label">Email</label><input type="email" class="input" name="email" required autocomplete="email"></div>
+                    <div class="form-group"><label class="form-label">Username</label><input type="text" class="input" name="username" required minlength="3" autocomplete="username"></div>
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="input" id="register-password" name="password" required minlength="6" autocomplete="new-password">
+                            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('register-password')" title="Show password">
+                                <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                        <small style="color: var(--color-text-tertiary); font-size: 0.75rem;">Minimum 6 characters</small>
+                    </div>
                     <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Create Account</button>
                 </form>
                 <div class="auth-footer">Already have an account? <a href="#" id="show-login">Sign in</a></div>
@@ -480,25 +523,196 @@ class App {
 
     async handleLogin(e) {
         e.preventDefault();
-        const form = e.target, btn = form.querySelector('button[type="submit"]');
-        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+        const form = e.target;
+        const btn = form.querySelector('button[type="submit"]');
+        const errorDiv = document.getElementById('auth-error');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        errorDiv.style.display = 'none';
+
         try {
             await api.login(form.username.value, form.password.value);
             this.user = await api.getMe();
             await this.loadDashboard();
-        } catch (err) { this.showToast(err.message, 'error'); btn.disabled = false; btn.textContent = 'Sign In'; }
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Sign In';
+            errorDiv.textContent = err.message || 'Login failed. Please check your credentials and try again.';
+            errorDiv.style.display = 'block';
+            form.password.value = ''; // Clear password field
+            form.password.focus();
+        }
     }
 
     async handleRegister(e) {
         e.preventDefault();
-        const form = e.target, btn = form.querySelector('button[type="submit"]');
+        const form = e.target;
+        const btn = form.querySelector('button[type="submit"]');
+        const errorDiv = document.getElementById('auth-error');
+
         btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        errorDiv.style.display = 'none';
+
         try {
             await api.register(form.email.value, form.username.value, form.password.value);
             await api.login(form.username.value, form.password.value);
             this.user = await api.getMe();
             await this.loadDashboard();
-        } catch (err) { this.showToast(err.message, 'error'); btn.disabled = false; btn.textContent = 'Create Account'; }
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Create Account';
+            errorDiv.textContent = err.message || 'Registration failed. Please try again.';
+            errorDiv.style.display = 'block';
+            form.password.value = ''; // Clear password field
+            form.password.focus();
+        }
+    }
+
+    togglePasswordVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        const button = input.nextElementSibling;
+
+        if (input.type === 'password') {
+            input.type = 'text';
+            button.setAttribute('title', 'Hide password');
+            button.querySelector('.eye-icon').innerHTML = `
+                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+            `;
+        } else {
+            input.type = 'password';
+            button.setAttribute('title', 'Show password');
+            button.querySelector('.eye-icon').innerHTML = `
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+            `;
+        }
+    }
+
+    showForgotPassword() {
+        document.getElementById('app').innerHTML = `
+            <div class="auth-page"><div class="auth-card">
+                <div class="auth-header">
+                    <h1 class="auth-title">Reset Password</h1>
+                    <p class="auth-subtitle">Enter your email to receive reset instructions</p>
+                </div>
+                <div class="auth-error" id="auth-error" style="display: none;"></div>
+                <div class="auth-success" id="auth-success" style="display: none;"></div>
+                <form id="forgot-password-form">
+                    <div class="form-group">
+                        <label class="form-label">Email Address</label>
+                        <input type="email" class="input" name="email" required autocomplete="email">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Send Reset Link</button>
+                </form>
+                <div class="auth-footer"><a href="#" id="back-to-login">Back to Sign In</a></div>
+            </div></div>`;
+
+        document.getElementById('forgot-password-form').addEventListener('submit', e => this.handleForgotPassword(e));
+        document.getElementById('back-to-login').addEventListener('click', e => { e.preventDefault(); this.showAuth(); });
+    }
+
+    async handleForgotPassword(e) {
+        e.preventDefault();
+        const form = e.target;
+        const btn = form.querySelector('button[type="submit"]');
+        const errorDiv = document.getElementById('auth-error');
+        const successDiv = document.getElementById('auth-success');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        errorDiv.style.display = 'none';
+        successDiv.style.display = 'none';
+
+        try {
+            await api.requestPasswordReset(form.email.value);
+            btn.style.display = 'none';
+            form.email.disabled = true;
+            successDiv.textContent = 'Password reset instructions have been sent to your email. Please check your inbox.';
+            successDiv.style.display = 'block';
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Send Reset Link';
+            errorDiv.textContent = err.message || 'Failed to send reset link. Please try again.';
+            errorDiv.style.display = 'block';
+        }
+    }
+
+    showResetPassword(token) {
+        document.getElementById('app').innerHTML = `
+            <div class="auth-page"><div class="auth-card">
+                <div class="auth-header">
+                    <h1 class="auth-title">Set New Password</h1>
+                    <p class="auth-subtitle">Enter your new password below</p>
+                </div>
+                <div class="auth-error" id="auth-error" style="display: none;"></div>
+                <form id="reset-password-form">
+                    <input type="hidden" name="token" value="${token}">
+                    <div class="form-group">
+                        <label class="form-label">New Password</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="input" id="new-password" name="password" required minlength="6" autocomplete="new-password">
+                            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('new-password')" title="Show password">
+                                <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                        <small style="color: var(--color-text-tertiary); font-size: 0.75rem;">Minimum 6 characters</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Confirm Password</label>
+                        <div class="password-input-wrapper">
+                            <input type="password" class="input" id="confirm-password" name="confirm_password" required minlength="6" autocomplete="new-password">
+                            <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('confirm-password')" title="Show password">
+                                <svg class="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Reset Password</button>
+                </form>
+                <div class="auth-footer"><a href="#" id="back-to-login">Back to Sign In</a></div>
+            </div></div>`;
+
+        document.getElementById('reset-password-form').addEventListener('submit', e => this.handleResetPassword(e));
+        document.getElementById('back-to-login').addEventListener('click', e => { e.preventDefault(); this.showAuth(); });
+    }
+
+    async handleResetPassword(e) {
+        e.preventDefault();
+        const form = e.target;
+        const btn = form.querySelector('button[type="submit"]');
+        const errorDiv = document.getElementById('auth-error');
+
+        const password = form.password.value;
+        const confirmPassword = form.confirm_password.value;
+
+        if (password !== confirmPassword) {
+            errorDiv.textContent = 'Passwords do not match.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>';
+        errorDiv.style.display = 'none';
+
+        try {
+            await api.resetPassword(form.token.value, password);
+            this.showToast('Password reset successfully! Please sign in with your new password.');
+            setTimeout(() => this.showAuth(), 1500);
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Reset Password';
+            errorDiv.textContent = err.message || 'Failed to reset password. The link may have expired.';
+            errorDiv.style.display = 'block';
+        }
     }
 
     async loadDashboard() {
