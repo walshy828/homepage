@@ -9,7 +9,8 @@ from app.schemas.schemas import (
     WeatherCurrent, WeatherForecastDay, WeatherResponse,
     DockerContainer, DockerResponse,
     ProxmoxVM, ProxmoxNode, ProxmoxResponse,
-    CategorizeLinkRequest, CategorizeLinkResponse, SuggestTagsResponse
+    CategorizeLinkRequest, CategorizeLinkResponse, SuggestTagsResponse,
+    ForgotPasswordRequest, ResetPasswordRequest
 )
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "WeatherCurrent", "WeatherForecastDay", "WeatherResponse",
     "DockerContainer", "DockerResponse",
     "ProxmoxVM", "ProxmoxNode", "ProxmoxResponse",
-    "CategorizeLinkRequest", "CategorizeLinkResponse", "SuggestTagsResponse"
+    "CategorizeLinkRequest", "CategorizeLinkResponse", "SuggestTagsResponse",
+    "ForgotPasswordRequest", "ResetPasswordRequest"
 ]
