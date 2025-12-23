@@ -812,9 +812,9 @@ class App {
                                 <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
                                 <span class="sidebar-item-text">Dashboard Settings</span>
                             </div>
-                            <div class="sidebar-item" onclick="app.openSettings(); app.closeMobileSidebar();" title="Global Settings">
+                            <div class="sidebar-item" onclick="app.openSettings(); app.closeMobileSidebar();" title="User Settings">
                                 <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
-                                <span class="sidebar-item-text">Global Settings</span>
+                                <span class="sidebar-item-text">User Settings</span>
                             </div>
                             <div class="sidebar-item" onclick="app.showKeyboardHelp();" title="Keyboard Shortcuts (?)">
                                 <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg></span>
@@ -3956,18 +3956,88 @@ class App {
 
     openSettings() {
         this.toggleUserMenu();
-        this.showModal('Settings', `<div class="settings-section">
-            <div class="settings-row"><div><div class="settings-label">Theme</div><div class="settings-description">Choose your preferred color scheme</div></div>
-                <select class="input" style="width:auto" onchange="app.setTheme(this.value)">
-                    <option value="system" ${localStorage.getItem('theme') === 'system' ? 'selected' : ''}>System</option>
-                    <option value="light" ${localStorage.getItem('theme') === 'light' ? 'selected' : ''}>Light</option>
-                    <option value="dark" ${localStorage.getItem('theme') === 'dark' ? 'selected' : ''}>Dark</option>
-                </select>
+        this.showModal('User Settings', `
+            <div class="settings-section">
+                <div class="sidebar-section-title" style="margin-top: 0;">General</div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Theme</div>
+                        <div class="settings-description">Choose your preferred color scheme</div>
+                    </div>
+                    <select class="input" style="width:auto" onchange="app.setTheme(this.value)">
+                        <option value="system" ${localStorage.getItem('theme') === 'system' ? 'selected' : ''}>System</option>
+                        <option value="light" ${localStorage.getItem('theme') === 'light' ? 'selected' : ''}>Light</option>
+                        <option value="dark" ${localStorage.getItem('theme') === 'dark' ? 'selected' : ''}>Dark</option>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <div>
+                        <div class="settings-label">Weather Location</div>
+                        <div class="settings-description">Default location for weather widgets</div>
+                    </div>
+                    <input class="input" style="width:200px" value="${this.user?.default_weather_location || ''}" onchange="app.updateUserSetting('default_weather_location', this.value)">
+                </div>
             </div>
-            <div class="settings-row"><div><div class="settings-label">Weather Location</div><div class="settings-description">Default location for weather widgets</div></div>
-                <input class="input" style="width:200px" value="${this.user?.default_weather_location || ''}" onchange="app.updateUserSetting('default_weather_location', this.value)">
+            
+            <div class="sidebar-divider" style="margin: 24px 0;"></div>
+            
+            <div class="settings-section">
+                <div class="sidebar-section-title">Account Security</div>
+                <p class="settings-description" style="margin-bottom: 20px;">Update your password regularly to keep your account secure.</p>
+                <form id="change-password-form">
+                    <div class="auth-error" id="change-pw-error" style="display: none; margin-bottom: 16px;"></div>
+                    <div class="form-group">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" class="input" name="current_password" required autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="input" name="new_password" required minlength="6" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" class="input" name="confirm_password" required minlength="6" autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="change-pw-btn" style="width: 100%; margin-top: 8px;">Update Password</button>
+                </form>
             </div>
-        </div>`);
+        `);
+
+        const form = document.getElementById('change-password-form');
+        if (form) {
+            form.addEventListener('submit', (e) => this.handleChangePassword(e));
+        }
+    }
+
+    async handleChangePassword(e) {
+        e.preventDefault();
+        const form = e.target;
+        const currentPassword = form.current_password.value;
+        const newPassword = form.new_password.value;
+        const confirmPassword = form.confirm_password.value;
+        const errorDiv = document.getElementById('change-pw-error');
+        const btn = document.getElementById('change-pw-btn');
+
+        if (newPassword !== confirmPassword) {
+            errorDiv.textContent = 'New passwords do not match.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-small"></span> Updating...';
+        errorDiv.style.display = 'none';
+
+        try {
+            await api.changePassword(currentPassword, newPassword);
+            this.showToast('Password updated successfully');
+            this.closeModal();
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Update Password';
+            errorDiv.textContent = err.message || 'Failed to update password.';
+            errorDiv.style.display = 'block';
+        }
     }
 
     async updateUserSetting(key, value) {

@@ -10,7 +10,7 @@ from app.schemas.schemas import (
     DockerContainer, DockerResponse,
     ProxmoxVM, ProxmoxNode, ProxmoxResponse,
     CategorizeLinkRequest, CategorizeLinkResponse, SuggestTagsResponse,
-    ForgotPasswordRequest, ResetPasswordRequest
+    ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest
 )
 
 __all__ = [
@@ -24,5 +24,5 @@ __all__ = [
     "DockerContainer", "DockerResponse",
     "ProxmoxVM", "ProxmoxNode", "ProxmoxResponse",
     "CategorizeLinkRequest", "CategorizeLinkResponse", "SuggestTagsResponse",
-    "ForgotPasswordRequest", "ResetPasswordRequest"
+    "ForgotPasswordRequest", "ResetPasswordRequest", "ChangePasswordRequest"
 ]

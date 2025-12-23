@@ -111,6 +111,13 @@ class API {
         });
     }
 
+    async changePassword(currentPassword, newPassword) {
+        return this.request('/auth/change-password', {
+            method: 'POST',
+            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+        });
+    }
+
     async getNotes(params = {}) { return this.request(`/notes?${new URLSearchParams(params)}`); }
     async createNote(data) { return this.request('/notes', { method: 'POST', body: JSON.stringify(data) }); }
     async updateNote(id, data) { return this.request(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
