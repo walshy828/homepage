@@ -3955,7 +3955,6 @@ class App {
     }
 
     openSettings() {
-        this.toggleUserMenu();
         this.showModal('User Settings', `
             <div class="settings-section">
                 <div class="sidebar-section-title" style="margin-top: 0;">General</div>
