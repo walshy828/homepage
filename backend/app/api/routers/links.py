@@ -121,6 +121,8 @@ async def create_link(
                 link.description = preview.description
             if not link_data.image_url and preview.image:
                 link.image_url = preview.image
+            if preview.favicon:
+                link.favicon_url = preview.favicon
         except Exception:
             pass
     
@@ -230,16 +232,31 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
                 if desc_tag:
                     description = desc_tag.get("content")
             
-            # Resolve relative image URLs
+            # Favicons
+            favicon = None
+            icon_tags = soup.find_all("link", rel=lambda x: x and 'icon' in x.lower())
+            for tag in icon_tags:
+                tag_href = tag.get("href")
+                if tag_href:
+                    favicon = tag_href
+                    if tag.get('rel') and 'apple-touch-icon' in tag.get('rel'):
+                        break
+            
+            from urllib.parse import urljoin
             if image and not image.startswith(("http://", "https://")):
-                from urllib.parse import urljoin
                 image = urljoin(url, image)
+
+            if not favicon:
+                favicon = urljoin(url, "/favicon.ico")
+            elif not favicon.startswith(("http://", "https://")):
+                favicon = urljoin(url, favicon)
 
             return LinkPreviewResponse(
                 url=url,
                 title=title,
                 description=description,
-                image=image
+                image=image,
+                favicon=favicon
             )
             
     except Exception as e:

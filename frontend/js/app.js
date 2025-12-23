@@ -1764,7 +1764,7 @@ class App {
 
         const iconUrl = link.custom_icon && link.custom_icon.match(/^(http|www)/)
             ? link.custom_icon
-            : this.getFaviconUrl(link.url);
+            : (link.favicon_url || this.getFaviconUrl(link.url));
 
         const previewImageUrl = link.image_url || iconUrl;
         const age = this.timeAgo(link.created_at);
@@ -1899,7 +1899,8 @@ class App {
                 return `<span class="link-custom-icon">${icon}</span>`;
             }
             // Favicon fallback
-            return `<img class="${sizeClass}" src="${this.getFaviconUrl(l.url)}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'" alt="">`;
+            const fUrl = l.favicon_url || this.getFaviconUrl(l.url);
+            return `<img class="${sizeClass}" src="${fUrl}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'" alt="">`;
         };
 
         const renderLinkContent = (l, i, isGrid) => {
@@ -3051,7 +3052,7 @@ class App {
                     <div class="link-card-icon">
                         ${l.custom_icon ?
                 (l.custom_icon.match(/^(http|www)/) ? `<img src="${l.custom_icon}" class="link-icon-img" onerror="this.style.display='none'">` : `<span>${l.custom_icon}</span>`)
-                : `<img src="${this.getFaviconUrl(l.url)}" class="link-icon-img" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`
+                : `<img src="${l.favicon_url || this.getFaviconUrl(l.url)}" class="link-icon-img" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`
             }
                     </div>
                     <div class="link-card-actions">
@@ -3075,7 +3076,7 @@ class App {
 
         const iconHtml = l.custom_icon ?
             (l.custom_icon.match(/^(http|www)/) ? `<img src="${l.custom_icon}" onerror="this.style.display='none'">` : `<span>${l.custom_icon}</span>`)
-            : `<img src="${this.getFaviconUrl(l.url)}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`;
+            : `<img src="${l.favicon_url || this.getFaviconUrl(l.url)}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`;
 
         return `
         <div class="list-item" data-id="${l.id}">
@@ -3199,6 +3200,7 @@ class App {
             const titleInput = document.getElementById('link-title-input');
             const descInput = document.getElementById('link-desc-input');
             const imgInput = document.getElementById('link-image-input');
+            const iconInput = document.querySelector('#add-link-form [name="custom_icon"]');
 
             // Show loading state in inputs if they are empty
             if (titleInput && !titleInput.value) titleInput.placeholder = 'Fetching title...';
@@ -3214,6 +3216,9 @@ class App {
                 }
                 if (preview.image && imgInput && !imgInput.value) {
                     imgInput.value = preview.image;
+                }
+                if (preview.favicon && iconInput && !iconInput.value) {
+                    iconInput.value = preview.favicon;
                 }
             } catch (err) {
                 console.warn('Metadata fetch failed', err);
@@ -3431,6 +3436,8 @@ class App {
                 if (preview.title) titleInput.value = preview.title;
                 const descInput = document.querySelector('#edit-link-form [name="description"]');
                 if (preview.description && descInput) descInput.value = preview.description;
+                const iconInput = document.querySelector('#edit-link-form [name="custom_icon"]');
+                if (preview.favicon && iconInput) iconInput.value = preview.favicon;
                 this.showToast('Metadata refreshed');
                 this._isDirty = true;
             } catch (err) {

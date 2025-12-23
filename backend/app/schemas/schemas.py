@@ -194,6 +194,7 @@ class LinkPreviewResponse(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     image: Optional[str] = None
+    favicon: Optional[str] = None
 
 
 
