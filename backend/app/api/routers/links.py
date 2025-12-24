@@ -305,27 +305,13 @@ async def update_link(
             detail="Link not found"
         )
     
-    if link_data.url is not None:
-        link.url = link_data.url
-    if link_data.title is not None:
-        link.title = link_data.title
-    if link_data.description is not None:
-        link.description = link_data.description
-    if link_data.image_url is not None:
-        link.image_url = link_data.image_url
-    if link_data.category is not None:
-        link.category = link_data.category
+    update_data = link_data.model_dump(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(link, key, value)
+        
+    if "category" in update_data:
         link.is_ai_categorized = False
-    if link_data.custom_tags is not None:
-        link.custom_tags = link_data.custom_tags
-    if link_data.is_pinned is not None:
-        link.is_pinned = link_data.is_pinned
-    if link_data.display_order is not None:
-        link.display_order = link_data.display_order
-    if link_data.widget_id is not None:
-        link.widget_id = link_data.widget_id
-    if link_data.custom_icon is not None:
-        link.custom_icon = link_data.custom_icon if link_data.custom_icon else None
     
     return link
 

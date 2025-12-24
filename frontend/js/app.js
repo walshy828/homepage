@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.34
+                            Version 1.35
                         </div>
                     </div>
                 </nav>
@@ -3876,6 +3876,7 @@ class App {
         refreshMetaBtn.className = 'btn btn-sm btn-ghost';
         refreshMetaBtn.style.fontSize = '0.8rem';
         refreshMetaBtn.innerHTML = '🔄 Refresh Meta';
+        let fetchedFavicon = link.favicon_url;
         refreshMetaBtn.onclick = async () => {
             const url = urlInput.value.trim();
             if (!url) return;
@@ -3886,7 +3887,10 @@ class App {
                 const descInput = document.querySelector('#edit-link-form [name="description"]');
                 if (preview.description && descInput) descInput.value = preview.description;
                 const iconInput = document.querySelector('#edit-link-form [name="custom_icon"]');
-                if (preview.favicon && iconInput) iconInput.value = preview.favicon;
+                if (preview.favicon && iconInput) {
+                    iconInput.value = preview.favicon;
+                    fetchedFavicon = preview.favicon;
+                }
                 this.showToast('Metadata refreshed');
                 this._isDirty = true;
             } catch (err) {
@@ -3921,10 +3925,11 @@ class App {
             const category = tags.length > 0 ? tags[0].replace('#', '') : 'uncategorized';
 
             await api.updateLink(id, {
-                url: form.url.value,
+                url: url,
                 title: form.title.value,
                 description: form.description.value.trim() || null,
-                custom_icon: form.custom_icon.value || null,
+                custom_icon: form.custom_icon.value.trim() || null,
+                favicon_url: fetchedFavicon,
                 custom_tags: tags,
                 category
             });

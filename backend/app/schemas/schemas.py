@@ -164,6 +164,7 @@ class LinkUpdate(BaseModel):
     display_order: Optional[int] = None
     widget_id: Optional[int] = None
     custom_icon: Optional[str] = None
+    favicon_url: Optional[str] = None
 
 
 class LinkResponse(BaseModel):

@@ -129,32 +129,10 @@ async def update_note(
             detail="Note not found"
         )
     
-    if note_data.title is not None:
-        note.title = note_data.title
-    if note_data.content is not None:
-        note.content = note_data.content
-    if note_data.is_code is not None:
-        note.is_code = note_data.is_code
-    if note_data.code_language is not None:
-        note.code_language = note_data.code_language
-    if note_data.category is not None:
-        note.category = note_data.category
-    if note_data.color is not None:
-        note.color = note_data.color
-    if note_data.is_pinned is not None:
-        note.is_pinned = note_data.is_pinned
-    if note_data.tags is not None:
-        note.tags = note_data.tags
-    if note_data.show_as_widget is not None:
-        note.show_as_widget = note_data.show_as_widget
-    if note_data.widget_grid_x is not None:
-        note.widget_grid_x = note_data.widget_grid_x
-    if note_data.widget_grid_y is not None:
-        note.widget_grid_y = note_data.widget_grid_y
-    if note_data.widget_grid_w is not None:
-        note.widget_grid_w = note_data.widget_grid_w
-    if note_data.widget_grid_h is not None:
-        note.widget_grid_h = note_data.widget_grid_h
+    update_data = note_data.model_dump(exclude_unset=True)
+    
+    for key, value in update_data.items():
+        setattr(note, key, value)
     
     return note
 
