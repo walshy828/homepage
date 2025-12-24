@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.35
+                            Version 1.36
                         </div>
                     </div>
                 </nav>
@@ -3666,8 +3666,9 @@ class App {
                 if (preview.image && imgInput && !imgInput.value) {
                     imgInput.value = preview.image;
                 }
-                if (preview.favicon && iconInput && !iconInput.value) {
-                    iconInput.value = preview.favicon;
+                const siteFavicon = preview.favicon || this.getFaviconUrl(url);
+                if (siteFavicon && iconInput && !iconInput.value) {
+                    iconInput.value = siteFavicon;
                 }
             } catch (err) {
                 console.warn('Metadata fetch failed', err);
@@ -3886,10 +3887,11 @@ class App {
                 if (preview.title) titleInput.value = preview.title;
                 const descInput = document.querySelector('#edit-link-form [name="description"]');
                 if (preview.description && descInput) descInput.value = preview.description;
+                const siteFavicon = preview.favicon || this.getFaviconUrl(url);
                 const iconInput = document.querySelector('#edit-link-form [name="custom_icon"]');
-                if (preview.favicon && iconInput) {
-                    iconInput.value = preview.favicon;
-                    fetchedFavicon = preview.favicon;
+                if (siteFavicon && iconInput) {
+                    iconInput.value = siteFavicon;
+                    fetchedFavicon = siteFavicon;
                 }
                 this.showToast('Metadata refreshed');
                 this._isDirty = true;
