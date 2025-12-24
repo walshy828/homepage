@@ -4,7 +4,7 @@ Homepage Dashboard - Links Router
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, or_, case, desc
+from sqlalchemy import select, or_, case, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -84,7 +84,7 @@ async def list_links(
             # Sort by click_count desc
             query = query.order_by(Link.click_count.desc(), Link.created_at.desc())
         else:
-            query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.desc())
+            query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.asc())
     
     result = await db.execute(query)
     return result.scalars().all()
@@ -145,6 +145,19 @@ async def create_link(
         link.category = category
         link.is_ai_categorized = True
     
+    # Calculate next display_order to put it at the end
+    order_query = select(func.max(Link.display_order)).where(
+        Link.owner_id == current_user.id
+    )
+    if link_data.widget_id:
+        order_query = order_query.where(Link.widget_id == link_data.widget_id)
+    else:
+        order_query = order_query.where(Link.widget_id.is_(None))
+        
+    result = await db.execute(order_query)
+    max_order = result.scalar() or -1
+    link.display_order = max_order + 1
+
     db.add(link)
     await db.flush()
     
