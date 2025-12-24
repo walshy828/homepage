@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.36
+                            Version 1.37
                         </div>
                     </div>
                 </nav>

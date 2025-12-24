@@ -207,18 +207,34 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         }
         
-        async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, verify=False, headers=headers) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8.0, verify=False, headers=headers) as client:
+            response = None
             try:
+                # Primary attempt
                 response = await client.get(url)
                 response.raise_for_status()
-                soup = BeautifulSoup(response.text, 'html.parser')
-            except Exception as e:
-                print(f"Scraping failed for {url}, returning fallback: {e}")
-                return LinkPreviewResponse(
-                    url=url, 
-                    title=domain_guess, 
-                    favicon=f"https://www.google.com/s2/favicons?sz=64&domain={domain_guess}"
-                )
+            except Exception as first_err:
+                # Strategy: If HTTPS fails for a local-looking domain, try HTTP
+                if "https://" in url.lower():
+                    http_url = url.lower().replace("https://", "http://")
+                    try:
+                        print(f"HTTPS failed for {url}, trying HTTP fallback: {first_err}")
+                        response = await client.get(http_url)
+                        response.raise_for_status()
+                    except:
+                        pass
+                
+                if not response:
+                    print(f"Scraping failed for {url}, returning local fallbacks: {first_err}")
+                    parsed = urlparse(url)
+                    base_url = f"{parsed.scheme or 'http'}://{parsed.netloc}"
+                    return LinkPreviewResponse(
+                        url=url, 
+                        title=domain_guess, 
+                        favicon=urljoin(base_url, "/favicon.ico")
+                    )
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
             
             title = None
             description = None
@@ -289,7 +305,9 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
             
     except Exception as e:
         print(f"Global error in preview_link for {url}: {e}")
-        return LinkPreviewResponse(url=url, title=domain_guess, favicon=None)
+        parsed = urlparse(url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        return LinkPreviewResponse(url=url, title=domain_guess, favicon=urljoin(base_url, "/favicon.ico"))
 
 
 @router.get("/{link_id}", response_model=LinkResponse)
