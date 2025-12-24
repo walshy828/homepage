@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.39
+                            Version 1.40
                         </div>
                     </div>
                 </nav>
@@ -1979,44 +1979,41 @@ class App {
 
     async loadLinksWidget(body, widget) {
         const config = widget.config || {};
-        let links;
+        let allLinks;
 
         if (config.mode === 'recent') {
-            links = await api.getLinks({ sort_by: 'recent' });
+            allLinks = await api.getLinks({ sort_by: 'recent' });
         } else {
-            links = await api.getLinks({ widget_id: widget.id });
+            allLinks = await api.getLinks({ widget_id: widget.id });
         }
 
-        // If no links assigned to this widget, show unassigned links logic only for standard mode?
-        // Actually, existing logic for standard mode assigns by widget_id.
-
-        if (config.filterCategory) links = links.filter(l => l.category === config.filterCategory);
-
-        const limit = config.limit || (config.maxLinks || 10);
-        links = links.slice(0, limit);
+        if (config.filterCategory) allLinks = allLinks.filter(l => l.category === config.filterCategory);
 
         // Sort by display_order ONLY if standard mode
         if (config.mode !== 'recent') {
-            links.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+            allLinks.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
         }
+
+        const limit = parseInt(config.limit) || 10;
+        const isExpanded = this._expandedWidgets?.has(widget.id);
+        const hasMore = allLinks.length > limit;
+
+        // Slice based on expansion state
+        const links = isExpanded ? allLinks : allLinks.slice(0, limit);
 
         const showIcon = config.showIcon !== false, showTitle = config.showTitle !== false, showTags = config.showTags === true;
         const iconsOnly = config.icons_only || (showIcon && !showTitle && !showTags);
-
 
         // Helper to render icon (Emoji, URL, or Favicon)
         const renderIcon = (l, sizeClass) => {
             if (l.custom_icon) {
                 const icon = l.custom_icon.trim();
-                // Check if URL
                 if (icon.match(/^(https?:\/\/|\/|www\.)/i) || icon.match(/\.(png|jpg|jpeg|gif|ico|svg|webp)$/i)) {
                     return `<img class="${sizeClass}" src="${icon}" alt="icon" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`;
                 }
-                // Assume Emoji or single character
-                const displayIcon = [...icon].slice(0, 2).join(''); // Handle composite emojis up to 2 clusters or just 2 chars
+                const displayIcon = [...icon].slice(0, 2).join('');
                 return `<span class="link-custom-icon">${displayIcon}</span>`;
             }
-            // Favicon fallback
             const fUrl = l.favicon_url || this.getFaviconUrl(l.url);
             return `<img class="${sizeClass}" src="${fUrl}" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'" alt="">`;
         };
@@ -2027,9 +2024,7 @@ class App {
                     ${renderIcon(l, 'link-favicon-lg')}
                 </a>`;
             }
-            // Tags display
             let tagsHtml = '';
-            // Only show tags if enabled in config
             if (showTags && l.custom_tags && l.custom_tags.length) {
                 tagsHtml = `<div class="link-tags-list">${l.custom_tags.map(t => `<span class="link-tag-pill">${t}</span>`).join('')}</div>`;
             }
@@ -2050,27 +2045,51 @@ class App {
                 </div>`;
         };
 
+        let html = '';
         if (iconsOnly) {
             const size = config.icon_size || 'md';
-            body.innerHTML = links.length ? `<div class="link-grid size-${size}" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, true)).join('')}</div>
-            <button class="add-link-btn" onclick="app.openAddLinkModal(${widget.id})">+ Add Link</button>`
+            html = allLinks.length ? `<div class="link-grid size-${size}" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, true)).join('')}</div>`
                 : `<div class="widget-empty">No links<br><button class="btn btn-sm" onclick="app.openAddLinkModal(${widget.id})">Add Link</button></div>`;
         } else {
-            body.innerHTML = links.length ? `<div class="link-list" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, false)).join('')}</div>
-            <button class="add-link-btn" onclick="app.openAddLinkModal(${widget.id})">+ Add Link</button>`
+            html = allLinks.length ? `<div class="link-list" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, false)).join('')}</div>`
                 : `<div class="widget-empty">No links<br><button class="btn btn-sm" onclick="app.openAddLinkModal(${widget.id})">Add Link</button></div>`;
         }
+
+        // Add Show More button
+        if (hasMore) {
+            html += `
+            <div class="widget-expand-more">
+                <button class="btn btn-ghost btn-sm" onclick="app.toggleLinksExpansion(${widget.id})" style="width:100%; font-size: 0.75rem; border-top: 1px solid var(--color-border-light); border-radius: 0; padding: 4px;">
+                    ${isExpanded ? 'Show Less ↑' : `Show ${allLinks.length - limit} More Selection ↓`}
+                </button>
+            </div>`;
+        }
+
+        // Add regular action button if not empty
+        if (allLinks.length) {
+            html += `<button class="add-link-btn" onclick="app.openAddLinkModal(${widget.id})">+ Add Link</button>`;
+        }
+
+        body.innerHTML = html;
 
         // Enable drag-to-reorder in edit mode
         if (this.editMode && links.length > 1) {
             this.initLinkDragReorder(body, widget.id);
         }
 
-
         if (config.autoFit) {
-            // Slight delay to ensure DOM is rendered calculation is correct
             setTimeout(() => this.autoFitWidget(widget.id), 50);
         }
+    }
+
+    toggleLinksExpansion(widgetId) {
+        if (!this._expandedWidgets) this._expandedWidgets = new Set();
+        if (this._expandedWidgets.has(widgetId)) {
+            this._expandedWidgets.delete(widgetId);
+        } else {
+            this._expandedWidgets.add(widgetId);
+        }
+        this.refreshWidget(widgetId);
     }
 
 
@@ -2382,25 +2401,25 @@ class App {
 
     async loadNotesWidget(body, widget) {
         const config = widget.config || {};
-        let notes;
+        let allNotes;
 
         if (config.mode === 'recent') {
-            notes = await api.getNotes({ sort_by: 'recent' });
+            allNotes = await api.getNotes({ sort_by: 'recent' });
         } else {
-            // Placeholder: Standard notes widget showing specific category or all?
-            // For now, default to recent if not specified, or all pinned?
-            notes = await api.getNotes({ pinned_only: true });
+            allNotes = await api.getNotes({ pinned_only: true });
         }
 
-        const limit = config.limit || 5;
-        notes = notes.slice(0, limit);
+        const limit = parseInt(config.limit) || 5;
+        const isExpanded = this._expandedNotes?.has(widget.id);
+        const hasMore = allNotes.length > limit;
+        const notes = isExpanded ? allNotes : allNotes.slice(0, limit);
 
-        if (!notes || notes.length === 0) {
+        if (!allNotes || allNotes.length === 0) {
             body.innerHTML = '<div class="widget-empty">No notes found</div>';
             return;
         }
 
-        body.innerHTML = `<div class="link-list">
+        let html = `<div class="link-list">
             ${notes.map(n => `
                 <div class="list-item" onclick="app.viewNote(${n.id})">
                     <div class="list-item-main">
@@ -2413,6 +2432,27 @@ class App {
                 </div>
             `).join('')}
         </div>`;
+
+        if (hasMore) {
+            html += `
+            <div class="widget-expand-more">
+                <button class="btn btn-ghost btn-sm" onclick="app.toggleNotesExpansion(${widget.id})" style="width:100%; font-size: 0.75rem; border-top: 1px solid var(--color-border-light); border-radius: 0; padding: 4px;">
+                    ${isExpanded ? 'Show Less ↑' : `Show ${allNotes.length - limit} More Notes ↓`}
+                </button>
+            </div>`;
+        }
+
+        body.innerHTML = html;
+    }
+
+    toggleNotesExpansion(widgetId) {
+        if (!this._expandedNotes) this._expandedNotes = new Set();
+        if (this._expandedNotes.has(widgetId)) {
+            this._expandedNotes.delete(widgetId);
+        } else {
+            this._expandedNotes.add(widgetId);
+        }
+        this.refreshWidget(widgetId);
     }
 
     // Existing loadWeatherWidget...
@@ -4642,21 +4682,17 @@ class App {
                 <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" value="${widget.title}"></div>
                 
                 <div class="form-group">
-                    <label class="form-label">Mode</label>
-                    <select class="input" name="mode" onchange="document.getElementById('limit-group').style.display = this.value === 'recent' ? 'block' : 'none'">
-                        <option value="standard" ${config.mode !== 'recent' ? 'selected' : ''}>Standard</option>
-                        <option value="recent" ${config.mode === 'recent' ? 'selected' : ''}>Recent</option>
+                    <label class="form-label">Display Mode</label>
+                    <select class="input" name="mode">
+                        <option value="standard" ${config.mode !== 'recent' ? 'selected' : ''}>Standard (Manual Order)</option>
+                        <option value="recent" ${config.mode === 'recent' ? 'selected' : ''}>Recents (Recently Used)</option>
                     </select>
                 </div>
 
-                <script>
-                    // Add interactivity to the config modal without global scope if possible
-                    // However, our modals are simple innerHTML. We'll use a direct change listener.
-                </script>
-                
-                <div class="form-group" id="limit-group" style="${config.mode === 'recent' ? '' : 'display:none'}">
-                    <label class="form-label">Item Count</label>
-                    <input class="input" type="number" name="limit" value="${config.limit || 10}" min="1" max="50">
+                <div class="form-group" id="limit-group">
+                    <label class="form-label">Default Display Count</label>
+                    <input class="input" type="number" name="limit" value="${config.limit || 10}" min="1" max="100">
+                    <p style="font-size: 0.75rem; color: var(--color-text-tertiary); margin-top: 4px;">Limit the number of items shown by default. Users can expand the list manually.</p>
                 </div>
 
                 ${isLinks ? `

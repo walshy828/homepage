@@ -98,6 +98,18 @@
     gap: var(--spacing-xs);
 }
 
+.widget-expand-more {
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--color-bg-widget);
+}
+
+.widget-expand-more button:hover {
+    background: var(--color-bg-hover) !important;
+}
+
 .widget-action-btn {
     width: 32px;
     height: 32px;
