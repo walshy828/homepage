@@ -2113,7 +2113,9 @@ class App {
             const isTyping = activeElement.tagName === 'INPUT' ||
                 activeElement.tagName === 'TEXTAREA' ||
                 activeElement.isContentEditable ||
-                activeElement.classList.contains('ql-editor');
+                activeElement.classList.contains('ql-editor') ||
+                activeElement.closest('.CodeMirror') ||
+                activeElement.closest('.cm-editor');
 
             // Check if any modal/overlay is open
             const modalOpen = document.getElementById('modal-overlay')?.classList.contains('active');
@@ -4054,11 +4056,17 @@ class App {
 
         // Add Keyboard handlers (ESC to close, E to edit)
         this._noteFullpageKeyHandler = (e) => {
+            const activeElement = document.activeElement;
+            const isTyping = activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.isContentEditable ||
+                activeElement.classList.contains('ql-editor') ||
+                activeElement.closest('.CodeMirror') ||
+                activeElement.closest('.cm-editor');
+
             if (e.key === 'Escape') {
                 this.closeNoteFullpage();
-            } else if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                // Don't trigger if modifiers are pressed (like Cmd+E)
-                // and ensure we are not in an input/textarea if there were any (there aren't in view mode)
+            } else if (!isTyping && (e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 this.editNoteFullpage(id);
             }
         };
@@ -4067,6 +4075,12 @@ class App {
 
     // Full-page note editing
     async editNoteFullpage(id) {
+        // Remove view mode key handler if transition from view mode
+        if (this._noteFullpageKeyHandler) {
+            document.removeEventListener('keydown', this._noteFullpageKeyHandler);
+            this._noteFullpageKeyHandler = null;
+        }
+
         this._isDirty = false; // Reset for new edit
         this._currentFullpageNoteId = id;
         const note = this.allNotes.find(n => n.id === id);
@@ -4339,6 +4353,10 @@ class App {
         if (this._noteFullpageSaveHandler) {
             document.removeEventListener('keydown', this._noteFullpageSaveHandler);
             this._noteFullpageSaveHandler = null;
+        }
+        if (this._noteFullpageEscHandler) {
+            document.removeEventListener('keydown', this._noteFullpageEscHandler);
+            this._noteFullpageEscHandler = null;
         }
 
         // Clear references
