@@ -1656,3 +1656,66 @@ a.link-item:hover .link-tag-pill {
 .todo-completed-section .todo-item {
     opacity: 0.6;
 }
+
+/* Inline Title Editor */
+.inline-title-edit-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    flex: 1;
+    min-width: 0;
+}
+
+.inline-title-input {
+    flex: 1;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    font-size: inherit;
+    font-weight: inherit;
+    color: var(--color-text-primary);
+    outline: none;
+    min-width: 0;
+}
+
+.inline-title-actions {
+    display: flex;
+    gap: 2px;
+}
+
+.inline-title-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition-fast);
+}
+
+.inline-title-btn:hover {
+    background: var(--color-bg-hover);
+}
+
+.inline-title-btn.save {
+    color: #10b981;
+}
+
+.inline-title-btn.cancel {
+    color: #ef4444;
+}
+
+.widget-title span.editable-title {
+    transition: background 0.2s;
+    padding: 0 4px;
+}
+
+.widget-title span.editable-title:hover,
+.link-title:hover {
+    background: var(--color-bg-hover);
+    border-radius: var(--radius-sm);
+    cursor: text;
+}

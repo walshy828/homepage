@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.33
+                            Version 1.34
                         </div>
                     </div>
                 </nav>
@@ -1573,7 +1573,7 @@ class App {
                 <div class="widget-header">
                     <div class="widget-title">
                         ${isNew ? '<span class="badge-new">New</span>' : ''}
-                        <svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>${note.title}</span></div>
+                        <svg class="widget-title-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="editable-title" style="pointer-events: auto;" ondblclick="app.startInlineTitleEdit(this, 'note', ${note.id})">${note.title}</span></div>
                     <div class="widget-actions">
                         <button class="widget-action-btn" onclick="app.viewNote(${note.id})" title="View">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -1883,7 +1883,7 @@ class App {
 
         return `<div class="${classes.join(' ')}" data-id="${widget.id}" data-type="${widget.widget_type}">
             <div class="widget-header">
-                <div class="widget-title" style="pointer-events: none;">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
+                <div class="widget-title" style="pointer-events: none;">${this.getWidgetIcon(widget.widget_type)}<span class="editable-title" style="pointer-events: auto;" ondblclick="app.startInlineTitleEdit(this, 'widget', ${widget.id})">${widget.title}</span></div>
             <div class="widget-actions">
                 ${iconsOnlyBtn}
                 <button class="widget-action-btn edit-only" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
@@ -2028,7 +2028,7 @@ class App {
                     <div class="link-item" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
                         ${showIcon ? renderIcon(l, 'link-favicon') : ''}
                         <div class="link-info">
-                            ${showTitle ? `<div class="link-title">${l.title}</div>` : ''}
+                            ${showTitle ? `<div class="link-title" ondblclick="app.startInlineTitleEdit(this, 'link', ${l.id})">${l.title}</div>` : ''}
                             ${tagsHtml}
                         </div>
                     </div>
@@ -2780,6 +2780,119 @@ class App {
             input.value = ''; // clear input
         }
     }
+    startInlineTitleEdit(element, type, id) {
+        if (event) event.stopPropagation();
+
+        // Prevent multiple simultaneous edits
+        if (this._activeTitleEdit) {
+            this.cancelInlineTitleEdit();
+        }
+
+        const originalTitle = element.textContent.trim();
+        const originalParent = element.parentElement;
+
+        element.style.display = 'none';
+
+        const container = document.createElement('div');
+        container.className = 'inline-title-edit-container';
+        container.innerHTML = `
+            <input type="text" class="inline-title-input" value="${originalTitle}">
+            <div class="inline-title-actions">
+                <button class="inline-title-btn save" title="Save (Enter)">✓</button>
+                <button class="inline-title-btn cancel" title="Cancel (Esc)">×</button>
+            </div>
+        `;
+
+        originalParent.insertBefore(container, element);
+        const input = container.querySelector('.inline-title-input');
+        input.focus();
+        input.select();
+
+        this._activeTitleEdit = {
+            element,
+            container,
+            type,
+            id,
+            originalTitle
+        };
+
+        const save = () => this.saveInlineTitleEdit();
+        const cancel = () => this.cancelInlineTitleEdit();
+
+        container.querySelector('.save').onclick = (e) => { e.stopPropagation(); save(); };
+        container.querySelector('.cancel').onclick = (e) => { e.stopPropagation(); cancel(); };
+
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                save();
+            }
+            if (e.key === 'Escape') cancel();
+            e.stopPropagation();
+        };
+
+        // Don't auto-cancel on blur if we are clicking the buttons
+        input.onblur = (e) => {
+            setTimeout(() => {
+                if (this._activeTitleEdit && this._activeTitleEdit.container === container) {
+                    if (!document.activeElement || !container.contains(document.activeElement)) {
+                        cancel();
+                    }
+                }
+            }, 200);
+        };
+    }
+
+    async saveInlineTitleEdit() {
+        if (!this._activeTitleEdit) return;
+        const { element, container, type, id, originalTitle } = this._activeTitleEdit;
+        const input = container.querySelector('.inline-title-input');
+        const newTitle = input.value.trim();
+
+        if (!newTitle || newTitle === originalTitle) {
+            this.cancelInlineTitleEdit();
+            return;
+        }
+
+        try {
+            if (type === 'widget') {
+                await api.updateWidget(id, { title: newTitle });
+                this.showToast('Widget title updated');
+            } else if (type === 'note') {
+                await api.updateNote(id, { title: newTitle });
+                this.allNotes = await api.getNotes();
+                this.showToast('Note title updated');
+            } else if (type === 'link') {
+                await api.updateLink(id, { title: newTitle });
+                this.allLinks = await api.getLinks();
+                this.showToast('Link title updated');
+            }
+
+            element.textContent = newTitle;
+            this.cancelInlineTitleEdit();
+
+            // Refresh widget logic to ensure everything is in sync
+            if (type === 'widget') {
+                this.refreshWidget(id);
+            }
+        } catch (err) {
+            this.showToast('Failed to update title: ' + err.message, 'error');
+            this.cancelInlineTitleEdit();
+        }
+    }
+
+    cancelInlineTitleEdit() {
+        if (!this._activeTitleEdit) return;
+        const { element, container } = this._activeTitleEdit;
+        if (container && container.parentNode) {
+            container.remove();
+        }
+        if (element) {
+            element.style.display = '';
+        }
+        this._activeTitleEdit = null;
+    }
+
 
     async refreshWidget(id) {
         const widgets = await api.getDashboardWidgets(this.dashboard.id);
