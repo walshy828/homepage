@@ -198,73 +198,86 @@ async def categorize_links(
 @router.get("/preview", response_model=LinkPreviewResponse)
 async def preview_link(url: str = Query(..., description="URL to preview")):
     """Fetch Open Graph metadata for a URL."""
+    from urllib.parse import urljoin, urlparse
+    domain_guess = urlparse(url).hostname or "Site"
+    
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
         }
-        # verify=False helps with internal services using self-signed certs
+        
         async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, verify=False, headers=headers) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'html.parser')
+            except Exception as e:
+                print(f"Scraping failed for {url}, returning fallback: {e}")
+                return LinkPreviewResponse(
+                    url=url, 
+                    title=domain_guess, 
+                    favicon=f"https://www.google.com/s2/favicons?sz=64&domain={domain_guess}"
+                )
             
             title = None
             description = None
             image = None
             
-            # Try Open Graph tags first
+            # 1. Title Extraction
             og_title = soup.find("meta", property="og:title") or soup.find("meta", attrs={"name": "og:title"})
-            og_desc = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "og:description"})
-            og_image = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
-            
             if og_title:
                 title = og_title.get("content")
-            if og_desc:
-                description = og_desc.get("content")
-            if og_image:
-                image = og_image.get("content")
-                
-            # Fallback to standard tags
+            
             if not title:
                 title_tag = soup.find("title")
                 if title_tag:
                     title = title_tag.string
             
+            if not title:
+                title = domain_guess
+
+            # 2. Description Extraction
+            og_desc = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "og:description"})
+            if og_desc:
+                description = og_desc.get("content")
+            
             if not description:
                 desc_tag = soup.find("meta", attrs={"name": "description"})
                 if desc_tag:
                     description = desc_tag.get("content")
-            
-            # Favicons - Improved search
-            favicon = None
-            # Check for apple-touch-icon first as it's usually higher quality
-            apple_icon = soup.find("link", rel=lambda x: x and 'apple-touch-icon' in x.lower())
-            if apple_icon:
-                favicon = apple_icon.get("href")
-            
-            if not favicon:
-                # Then check for standard icons or shortcut icons
-                icon_tag = soup.find("link", rel=lambda x: x and x.lower() in ['icon', 'shortcut icon'])
-                if icon_tag:
-                    favicon = icon_tag.get("href")
-            
-            if not favicon:
-                # Broad search if still nothing
-                icon_tag = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
-                if icon_tag:
-                    favicon = icon_tag.get("href")
-            
-            from urllib.parse import urljoin
-            if image and not image.startswith(("http://", "https://")):
-                image = urljoin(url, image)
 
+            # 3. Icon Scavenging
+            favicon = None
+            
+            # Strategy A: Check Apple Touch Icons (High Res)
+            icon_tags = soup.find_all("link", rel=lambda x: x and 'apple-touch-icon' in x.lower())
+            if icon_tags:
+                # Sort by size if available, but for now just pick the first valid one
+                for tag in icon_tags:
+                    if tag.get("href"):
+                        favicon = urljoin(url, tag.get("href"))
+                        break
+
+            # Strategy B: Check Standard Icons
             if not favicon:
-                favicon = urljoin(url, "/favicon.ico")
-            elif not favicon.startswith(("http://", "https://")):
-                favicon = urljoin(url, favicon)
+                icon_tag = soup.find("link", rel=lambda x: x and x.lower() in ['icon', 'shortcut icon'])
+                if icon_tag and icon_tag.get("href"):
+                    favicon = urljoin(url, icon_tag.get("href"))
+
+            # Strategy C: Proactive common path check (Internal sites often don't have tags but have files)
+            if not favicon:
+                # Check /favicon.ico explicitly
+                try:
+                    ico_url = urljoin(url, "/favicon.ico")
+                    favicon = ico_url
+                except:
+                    pass
+
+            # 4. Image Extraction
+            og_image = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
+            if og_image:
+                image = urljoin(url, og_image.get("content"))
 
             return LinkPreviewResponse(
                 url=url,
@@ -275,9 +288,8 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
             )
             
     except Exception as e:
-        # Don't fail hard, just return what we have (or empty)
-        print(f"Error fetching preview for {url}: {e}")
-        return LinkPreviewResponse(url=url, title=None, description=None, image=None, favicon=None)
+        print(f"Global error in preview_link for {url}: {e}")
+        return LinkPreviewResponse(url=url, title=domain_guess, favicon=None)
 
 
 @router.get("/{link_id}", response_model=LinkResponse)
