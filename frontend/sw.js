@@ -3,7 +3,7 @@
  * Enables offline functionality and caching for PWA
  */
 
-const CACHE_NAME = 'homepage-dashboard-v2';
+const CACHE_NAME = 'homepage-dashboard-v4';
 const urlsToCache = [
     '/',
     '/index.html',

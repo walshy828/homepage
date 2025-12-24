@@ -53,22 +53,23 @@
 
 /* Completely hide in view-mode to prevent layout shifts */
 .view-mode .widget.hide-title-bar .widget-header {
-    display: none;
+    display: none !important;
 }
 
-/* In edit-mode, show a faint handle so GridStack can drag it */
+/* In edit-mode, ALWAYS show the header so it's grabbable by GridStack */
 .edit-mode .widget.hide-title-bar .widget-header {
-    display: flex;
-    opacity: 0.1;
-    pointer-events: auto;
-    border-bottom: 1px solid transparent;
-    transition: opacity var(--transition-normal), background var(--transition-normal);
+    display: flex !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    background: var(--color-bg-active);
+    border-bottom: 1px solid var(--color-border);
+    margin: 0;
+    visibility: visible !important;
 }
 
-.edit-mode .widget.hide-title-bar:hover .widget-header {
-    opacity: 1;
-    background: var(--color-bg-tertiary);
-    border-bottom: 1px solid var(--color-border-light);
+.edit-mode .widget.hide-title-bar .widget-title {
+    opacity: 0.6;
+    /* Dim the title a bit to show it's normally hidden */
 }
 
 /* Ensure widget-body takes full space when title is hidden */
@@ -110,6 +111,18 @@
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all var(--transition-fast);
+}
+
+.view-mode .edit-only {
+    display: none !important;
+}
+
+.edit-mode .widget-header {
+    cursor: grab !important;
+}
+
+.edit-mode .widget-header:active {
+    cursor: grabbing !important;
 }
 
 .widget-action-btn svg {

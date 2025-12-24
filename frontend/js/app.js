@@ -847,6 +847,9 @@ class App {
                     </div>
                     
                     <div class="sidebar-footer">
+                        <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
+                            Version 1.33
+                        </div>
                     </div>
                 </nav>
                 
@@ -1106,11 +1109,13 @@ class App {
 
         // Enable/disable grid editing
         if (this.grid) {
+            this.grid.setStatic(!this.editMode);
             this.grid.enableMove(this.editMode);
             this.grid.enableResize(this.editMode);
         }
-        this.refreshLinksWidgets();
-        // No toast - it covers important buttons
+
+        // Lightweight update for links instead of heavy grid.update
+        this.updateLinkDraggability();
     }
 
     async openDashboardSettings() {
@@ -1869,7 +1874,7 @@ class App {
 
         const isLinks = widget.widget_type === 'links';
         const iconsOnlyBtn = isLinks ? `
-            <button class="widget-action-btn ${config.icons_only ? 'active' : ''}" 
+            <button class="widget-action-btn edit-only icons-only-toggle ${config.icons_only ? 'active' : ''}" 
                 onclick="event.stopPropagation(); app.toggleWidgetConfig(${widget.id}, 'icons_only')" 
                 title="${config.icons_only ? 'Show Titles' : 'Icons Only Mode'}">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
@@ -1878,11 +1883,11 @@ class App {
 
         return `<div class="${classes.join(' ')}" data-id="${widget.id}" data-type="${widget.widget_type}">
             <div class="widget-header">
-                <div class="widget-title">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
+                <div class="widget-title" style="pointer-events: none;">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
             <div class="widget-actions">
                 ${iconsOnlyBtn}
-                <button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
-                <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                <button class="widget-action-btn edit-only" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+                <button class="widget-action-btn edit-only" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </div>
             </div>
             <div class="widget-body" id="widget-body-${widget.id}"><div class="widget-loading"><span class="spinner"></span></div></div>
@@ -2796,6 +2801,23 @@ class App {
                 }
                 this.initWidgetLogic(widget);
             }
+        }
+    }
+
+    updateLinkDraggability() {
+        document.querySelectorAll('.link-icon-item, .link-item-wrapper').forEach(item => {
+            item.setAttribute('draggable', this.editMode);
+        });
+
+        // Ensure reorder logic is initialized for each widget if entering edit mode
+        if (this.editMode) {
+            document.querySelectorAll('.links-widget').forEach(el => {
+                const widgetId = parseInt(el.dataset.id);
+                const body = el.querySelector('.widget-body');
+                if (body && widgetId) {
+                    this.initLinkDragReorder(body, widgetId);
+                }
+            });
         }
     }
 
@@ -4333,6 +4355,7 @@ class App {
                 this.showToast('Note created');
             }
             this._isDirty = false; // Clear before closing
+            this.allNotes = await api.getNotes(); // Refresh local cache
             this.closeNoteFullpage(true); // Force close
 
             if (this.currentPage === 'notes') this.renderNotesPage();

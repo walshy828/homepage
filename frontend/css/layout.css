@@ -224,6 +224,12 @@
 
 /* Sidebar Footer - Legacy, now hidden since toggle moved to header */
 .sidebar-footer {
+    border-top: 1px solid var(--color-border-light);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-secondary);
+}
+
+.app-sidebar-nav.collapsed .sidebar-footer {
     display: none;
 }
 
