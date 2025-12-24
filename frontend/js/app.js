@@ -848,7 +848,7 @@ class App {
                     
                     <div class="sidebar-footer">
                         <div style="padding: 10px; font-size: 10px; color: var(--color-text-tertiary); text-align: center; opacity: 0.5;">
-                            Version 1.37
+                            Version 1.38
                         </div>
                     </div>
                 </nav>
@@ -1267,7 +1267,18 @@ class App {
             return matchesSearch && matchesTag;
         });
 
-        filtered = this.sortItems(filtered, this.sortMode);
+        // Relevancy sorting
+        if (term) {
+            filtered.forEach(n => {
+                let score = 0;
+                if (n.title.toLowerCase().includes(term)) score += 10;
+                if (n.content.toLowerCase().includes(term)) score += 1;
+                n._searchScore = score;
+            });
+            filtered.sort((a, b) => b._searchScore - a._searchScore);
+        } else {
+            filtered = this.sortItems(filtered, this.sortMode);
+        }
 
         if (this.viewMode === 'grid') {
             grid.className = 'notes-grid';
@@ -3381,7 +3392,8 @@ class App {
             const matchesSearch = l.title.toLowerCase().includes(term) ||
                 l.url.toLowerCase().includes(term) ||
                 (l.custom_tags && l.custom_tags.some(t => t.toLowerCase().includes(term))) ||
-                (l.category && l.category.toLowerCase().includes(term));
+                (l.category && l.category.toLowerCase().includes(term)) ||
+                (l.description && l.description.toLowerCase().includes(term));
             const matchesTag = this.activeLinkTag ? (l.custom_tags && l.custom_tags.includes(this.activeLinkTag)) : true;
 
             let matchesWidget = true;
@@ -3394,7 +3406,20 @@ class App {
             return matchesSearch && matchesTag && matchesWidget;
         });
 
-        filtered = this.sortItems(filtered, this.sortMode);
+        // Relevancy sorting
+        if (term) {
+            filtered.forEach(l => {
+                let score = 0;
+                if (l.url.toLowerCase().includes(term)) score += 10;
+                if (l.title.toLowerCase().includes(term)) score += 5;
+                if ((l.custom_tags && l.custom_tags.some(t => t.toLowerCase().includes(term))) || (l.category && l.category.toLowerCase().includes(term))) score += 2;
+                if (l.description && l.description.toLowerCase().includes(term)) score += 1;
+                l._searchScore = score;
+            });
+            filtered.sort((a, b) => b._searchScore - a._searchScore);
+        } else {
+            filtered = this.sortItems(filtered, this.sortMode);
+        }
 
         if (!filtered.length) {
             grid.innerHTML = '<div class="empty-state">No links found matching your search.</div>';

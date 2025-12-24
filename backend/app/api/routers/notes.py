@@ -4,7 +4,7 @@ Homepage Dashboard - Notes Router
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -50,11 +50,20 @@ async def list_notes(
                 Note.content.ilike(search_term)
             )
         )
+        
+        # Calculate relevancy score
+        relevancy_score = case(
+            (Note.title.ilike(search_term), 10),
+            (Note.content.ilike(search_term), 1),
+            else_=0
+        )
+        query = query.order_by(desc(relevancy_score))
     
-    if sort_by == "recent":
-        query = query.order_by(Note.last_viewed.desc().nulls_last(), Note.updated_at.desc())
-    else:
-        query = query.order_by(Note.is_pinned.desc(), Note.updated_at.desc())
+    if not search:
+        if sort_by == "recent":
+            query = query.order_by(Note.last_viewed.desc().nulls_last(), Note.updated_at.desc())
+        else:
+            query = query.order_by(Note.is_pinned.desc(), Note.updated_at.desc())
     
     result = await db.execute(query)
     return result.scalars().all()
