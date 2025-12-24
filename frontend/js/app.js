@@ -305,6 +305,13 @@ class App {
         this.sortMode = localStorage.getItem('sortMode') || 'updated_desc'; // updated_desc | updated_asc | title_asc | title_desc
         this._isDirty = false;
 
+        this.linkLibraryPrefs = JSON.parse(localStorage.getItem('linkLibraryPrefs')) || {
+            showDescription: true,
+            showStats: true,
+            showAssignedWidget: true
+        };
+        this.linkWidgetFilter = 'all';
+
         // Browser navigation warning
         window.addEventListener('beforeunload', (e) => {
             if (this._isDirty) {
@@ -398,6 +405,11 @@ class App {
 
         if (this.currentPage === 'notes') this.renderNotesPage();
         else if (this.currentPage === 'links') this.renderLinksPage();
+    }
+
+    setWidgetFilter(widgetId) {
+        this.linkWidgetFilter = widgetId;
+        this.renderLinksPage();
     }
 
     execCmd(cmd, value = null) {
@@ -880,6 +892,10 @@ class App {
                                         <span class="icon">📝</span> Note
                                         <span class="shortcut">A→N / ⌘⇧N</span>
                                     </div>
+                                    <div class="dropdown-item" onclick="app.openAddCodeModal()">
+                                        <span class="icon">💻</span> Code Block
+                                        <span class="shortcut">A→C</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1255,6 +1271,11 @@ class App {
             grid.className = 'list-view-container';
             grid.innerHTML = filtered.map(n => this.renderNoteListItem(n)).join('');
         }
+
+        // Highlight all code blocks if hljs is available
+        if (window.hljs) {
+            setTimeout(() => hljs.highlightAll(), 0);
+        }
     }
 
     async toggleNoteWidget(noteId) {
@@ -1537,6 +1558,10 @@ class App {
         // Check if note is less than 24 hours old
         const isNew = (new Date() - new Date(note.created_at)) < 24 * 60 * 60 * 1000;
 
+        const noteContent = note.is_code
+            ? `<pre class="note-code language-${note.code_language || 'plaintext'}"><code>${safeContent}</code></pre>`
+            : `<div class="note-full-content">${safeContent}</div>`;
+
         this.grid.addWidget({
             id, x: note.widget_grid_x, y: note.widget_grid_y, w: note.widget_grid_w, h: note.widget_grid_h, content: `
             <div class="widget note-widget" data-note-id="${note.id}" data-type="note">
@@ -1552,8 +1577,12 @@ class App {
                         <button class="widget-action-btn" onclick="app.toggleNoteWidget(${note.id})" title="Hide">×</button>
                     </div>
                 </div>
-                <div class="widget-body note-widget-body" onclick="app.handleNoteWidgetClick(${note.id}, event)">${note.is_code ? `<pre class="note-code"><code>${safeContent}</code></pre>` : `<div class="note-full-content">${safeContent}</div>`}</div>
+                <div class="widget-body note-widget-body" onclick="app.handleNoteWidgetClick(${note.id}, event)">${noteContent}</div>
             </div>` });
+
+        if (note.is_code && window.hljs) {
+            setTimeout(() => hljs.highlightAll(), 0);
+        }
     }
 
     enableInlineEdit(noteId, container, event) {
@@ -1654,6 +1683,14 @@ class App {
 
         // Global delegate listener for hover events on links
         document.addEventListener('mouseover', (e) => {
+            // Hide preview if interacting with a dropdown OR if any dropdown is open
+            if (e.target.closest('.dropdown-menu, .dropdown-container') || document.querySelector('.dropdown-menu.show')) {
+                this.hideLinkPreview();
+                if (hoverTimeout) clearTimeout(hoverTimeout);
+                currentTarget = null;
+                return;
+            }
+
             const linkEl = e.target.closest('.link-icon-item, .link-item, .link-card, .list-item a, .search-result[data-type="link"]');
 
             if (!linkEl) {
@@ -1705,7 +1742,14 @@ class App {
 
         // Hide on scroll or click
         window.addEventListener('scroll', () => this.hideLinkPreview(), { passive: true });
-        document.addEventListener('click', () => this.hideLinkPreview());
+        document.addEventListener('click', (e) => {
+            this.hideLinkPreview();
+            // Close all open dropdown menus if clicking outside a dropdown container
+            if (!e.target.closest('.dropdown-container')) {
+                document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+                document.querySelectorAll('.dropdown-container.active').forEach(c => c.classList.remove('active'));
+            }
+        });
     }
 
     async showLinkPreview(linkId, targetEl) {
@@ -1817,16 +1861,73 @@ class App {
     }
 
     renderWidgetContent(widget) {
-        return `<div class="widget ${widget.widget_type}-widget" data-id="${widget.id}" data-type="${widget.widget_type}">
+        const config = widget.config || {};
+        const classes = [`widget`, `${widget.widget_type}-widget`];
+        if (config.hide_title) classes.push('hide-title-bar');
+        if (config.icons_only) classes.push('icons-only');
+        if (this.editMode) classes.push('edit-mode');
+
+        const isLinks = widget.widget_type === 'links';
+        const iconsOnlyBtn = isLinks ? `
+            <button class="widget-action-btn ${config.icons_only ? 'active' : ''}" 
+                onclick="event.stopPropagation(); app.toggleWidgetConfig(${widget.id}, 'icons_only')" 
+                title="${config.icons_only ? 'Show Titles' : 'Icons Only Mode'}">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            </button>
+        ` : '';
+
+        return `<div class="${classes.join(' ')}" data-id="${widget.id}" data-type="${widget.widget_type}">
             <div class="widget-header">
                 <div class="widget-title">${this.getWidgetIcon(widget.widget_type)}<span>${widget.title}</span></div>
             <div class="widget-actions">
-                ${['links', 'weather', 'todo'].includes(widget.widget_type) ? `<button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>` : ''}
+                ${iconsOnlyBtn}
+                <button class="widget-action-btn" onclick="app.openWidgetConfig(${widget.id})" title="Configure"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
                 <button class="widget-action-btn" onclick="app.deleteWidget(${widget.id})" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
             </div>
             </div>
             <div class="widget-body" id="widget-body-${widget.id}"><div class="widget-loading"><span class="spinner"></span></div></div>
         </div>`;
+    }
+
+    async toggleWidgetConfig(widgetId, key) {
+        const widgets = await api.getDashboardWidgets(this.dashboard.id);
+        const widget = widgets.find(w => w.id === widgetId);
+        if (!widget) return;
+
+        const config = widget.config || {};
+        config[key] = !config[key];
+
+        try {
+            await api.updateWidget(widgetId, { config });
+            this.refreshWidget(widgetId);
+        } catch (err) {
+            console.error('Failed to toggle widget config', err);
+            this.showToast('Failed to update widget', 'error');
+        }
+    }
+
+    toggleDropdown(btn) {
+        event.stopPropagation();
+        this.hideLinkPreview();
+        const container = btn.closest('.dropdown-container');
+        const menu = btn.nextElementSibling;
+        const isShowing = menu.classList.contains('show');
+
+        // Close all other dropdowns
+        document.querySelectorAll('.dropdown-menu.show').forEach(m => {
+            if (m !== menu) {
+                m.classList.remove('show');
+                m.closest('.dropdown-container')?.classList.remove('active');
+            }
+        });
+
+        if (isShowing) {
+            menu.classList.remove('show');
+            container.classList.remove('active');
+        } else {
+            menu.classList.add('show');
+            container.classList.add('active');
+        }
     }
 
     getWidgetIcon(type) {
@@ -1884,19 +1985,20 @@ class App {
         }
 
         const showIcon = config.showIcon !== false, showTitle = config.showTitle !== false, showTags = config.showTags === true;
-        const iconsOnly = showIcon && !showTitle && !showTags;
+        const iconsOnly = config.icons_only || (showIcon && !showTitle && !showTags);
 
 
         // Helper to render icon (Emoji, URL, or Favicon)
         const renderIcon = (l, sizeClass) => {
             if (l.custom_icon) {
                 const icon = l.custom_icon.trim();
-                // Check if URL (simple check for protocol or known image extensions if starting with www/http)
+                // Check if URL
                 if (icon.match(/^(https?:\/\/|\/|www\.)/i) || icon.match(/\.(png|jpg|jpeg|gif|ico|svg|webp)$/i)) {
-                    return `<img class="${sizeClass}" src="${icon}" alt="icon" onerror="this.outerHTML='<span class=link-custom-icon>${icon}</span>'">`; // Fallback to text if img fails
+                    return `<img class="${sizeClass}" src="${icon}" alt="icon" onerror="this.outerHTML='<span class=link-favicon-placeholder>${l.title.charAt(0).toUpperCase()}</span>'">`;
                 }
-                // Assume Emoji
-                return `<span class="link-custom-icon">${icon}</span>`;
+                // Assume Emoji or single character
+                const displayIcon = [...icon].slice(0, 2).join(''); // Handle composite emojis up to 2 clusters or just 2 chars
+                return `<span class="link-custom-icon">${displayIcon}</span>`;
             }
             // Favicon fallback
             const fUrl = l.favicon_url || this.getFaviconUrl(l.url);
@@ -1933,7 +2035,8 @@ class App {
         };
 
         if (iconsOnly) {
-            body.innerHTML = links.length ? `<div class="link-grid" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, true)).join('')}</div>
+            const size = config.icon_size || 'md';
+            body.innerHTML = links.length ? `<div class="link-grid size-${size}" data-widget-id="${widget.id}">${links.map((l, i) => renderLinkContent(l, i, true)).join('')}</div>
             <button class="add-link-btn" onclick="app.openAddLinkModal(${widget.id})">+ Add Link</button>`
                 : `<div class="widget-empty">No links<br><button class="btn btn-sm" onclick="app.openAddLinkModal(${widget.id})">Add Link</button></div>`;
         } else {
@@ -2552,54 +2655,130 @@ class App {
             // Default to Note/Text
             this.showModal('Add Note', `
                 <form id="add-note-form">
-                    <div class="form-group">
-                        <label class="form-label">Content</label>
-                        <div id="quick-note-editor" style="height: 150px;">${value}</div>
+                    <div class="form-group" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label class="form-label" style="margin:0;">Content</label>
+                        <div class="editor-type-switch" id="quick-note-type-switch">
+                            <button type="button" class="editor-type-btn active" data-type="rich">Standard</button>
+                            <button type="button" class="editor-type-btn" data-type="code">Code Block</button>
+                        </div>
                     </div>
-                    <div class="form-group"><label class="form-label">Category</label><input class="input" name="category" placeholder="General"></div>
+                    <div id="quick-note-editor-container" style="height: 180px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+                        <div id="quick-note-rich-editor" style="height: 100%; border:none;">${value}</div>
+                        <div id="quick-note-code-editor" style="height: 100%; display:none;"></div>
+                    </div>
+                    
+                    <div class="form-group" id="lang-group" style="display:none; margin-top:8px;">
+                        <label class="form-label">Language</label>
+                        <select class="input" name="code_language">
+                            <option value="javascript">JavaScript</option>
+                            <option value="python">Python</option>
+                            <option value="htmlmixed">HTML/XML</option>
+                            <option value="css">CSS</option>
+                            <option value="clike">C / C++ / Java</option>
+                            <option value="shell">Bash/Shell</option>
+                            <option value="markdown">Markdown</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top:12px;"><label class="form-label">Category</label><input class="input" name="category" placeholder="General"></div>
                     <div class="form-group"><label class="checkbox"><input type="checkbox" name="show_as_widget"> Show as Widget</label></div>
                     <button type="submit" class="btn btn-primary" style="width:100%">Add Note</button>
                 </form>`);
 
-            const quill = new Quill('#quick-note-editor', {
+            let currentEditorType = 'rich';
+            const quill = new Quill('#quick-note-rich-editor', {
                 theme: 'snow',
-                modules: {
-                    toolbar: [
-                        ['bold', 'italic', 'underline', 'strike'],
-                        ['blockquote', 'code-block'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        ['clean']
-                    ]
-                }
+                modules: { toolbar: [['bold', 'italic', 'underline', 'strike'], ['blockquote', 'code-block'], ['clean']] }
             });
 
+            let cm = null;
+            const switchBtns = document.querySelectorAll('#quick-note-type-switch .editor-type-btn');
+            switchBtns.forEach(btn => {
+                btn.onclick = () => {
+                    const type = btn.dataset.type;
+                    if (type === currentEditorType) return;
+
+                    const oldType = currentEditorType;
+                    currentEditorType = type;
+                    switchBtns.forEach(b => b.classList.toggle('active', b === btn));
+
+                    document.getElementById('quick-note-rich-editor').style.display = type === 'rich' ? 'block' : 'none';
+                    const qlContainer = document.querySelector('#quick-note-editor-container .ql-container');
+                    const qlToolbar = document.querySelector('#quick-note-editor-container .ql-toolbar');
+                    if (qlContainer) qlContainer.style.display = type === 'rich' ? 'block' : 'none';
+                    if (qlToolbar) qlToolbar.style.display = type === 'rich' ? 'flex' : 'none';
+
+                    document.getElementById('quick-note-code-editor').style.display = type === 'code' ? 'block' : 'none';
+                    document.getElementById('lang-group').style.display = type === 'code' ? 'block' : 'none';
+
+                    if (type === 'code') {
+                        const content = quill.getText().trim();
+                        if (!cm) {
+                            cm = CodeMirror(document.getElementById('quick-note-code-editor'), {
+                                value: content,
+                                mode: 'javascript',
+                                theme: 'material-darker',
+                                lineNumbers: true,
+                                tabSize: 4,
+                                indentUnit: 4
+                            });
+                        } else {
+                            cm.setValue(content);
+                        }
+                        setTimeout(() => cm.refresh(), 10);
+                    } else if (type === 'rich' && cm) {
+                        quill.setText(cm.getValue());
+                    }
+                };
+            });
             document.getElementById('add-note-form').addEventListener('submit', async e => {
                 e.preventDefault();
-                const content = quill.root.innerHTML;
-                await api.createNote({ content: content, category: e.target.category.value || 'General', show_as_widget: e.target.show_as_widget.checked });
+                const isCode = currentEditorType === 'code';
+                const content = isCode ? cm.getValue() : quill.root.innerHTML;
+                const noteData = {
+                    content: content,
+                    category: e.target.category.value || 'General',
+                    show_as_widget: e.target.show_as_widget.checked,
+                    is_code: isCode,
+                    code_language: isCode ? e.target.code_language.value : null,
+                    title: isCode ? 'Code Block' : 'Untitled Note'
+                };
+
+                await api.createNote(noteData);
                 this.allNotes = await api.getNotes(); // Refresh local state
                 this.closeModal();
                 this.showToast('Note added');
-                this.showToast('Note added');
+
                 if (this.currentPage === 'notes') this.renderNotesPage();
                 else {
                     this.loadDashboard();
                     this.refreshRecentWidgets('notes');
                 }
             });
+            input.value = ''; // clear input
         }
-        input.value = ''; // clear input
     }
 
     async refreshWidget(id) {
         const widgets = await api.getDashboardWidgets(this.dashboard.id);
         const widget = widgets.find(w => w.id === id);
         if (widget) {
-            // Update widget title in header
-            const titleEl = document.querySelector(`[data-id="${id}"] .widget-title span`);
-            if (titleEl) titleEl.textContent = widget.title;
-            // Update widget body
-            this.initWidgetLogic(widget);
+            const el = document.querySelector(`.grid-stack-item[gs-id="${id}"]`);
+            if (el && this.grid) {
+                // Completely re-render the widget shell to apply new classes/structure
+                this.grid.update(el, { content: this.renderWidgetContent(widget) });
+                this.initWidgetLogic(widget);
+            } else {
+                // Fallback: update title and logic only
+                const titleEl = document.querySelector(`[data-id="${id}"] .widget-title span`);
+                if (titleEl) titleEl.textContent = widget.title;
+                const widgetEl = document.querySelector(`.widget[data-id="${id}"]`);
+                if (widgetEl && widget.config) {
+                    widgetEl.classList.toggle('hide-title-bar', !!widget.config.hide_title);
+                    widgetEl.classList.toggle('icons-only', !!widget.config.icons_only);
+                }
+                this.initWidgetLogic(widget);
+            }
         }
     }
 
@@ -2894,6 +3073,11 @@ class App {
         window.location.hash = '#links';
         this.updateNavigationState();
 
+        // Load links and widgets
+        if (!this.allLinks || !this.allLinks.length) this.allLinks = await api.getLinks();
+        const allWidgets = await api.getDashboardWidgets(this.dashboard.id);
+        this.linkWidgets = allWidgets.filter(w => w.widget_type === 'links');
+
         const main = document.getElementById('main-content');
         main.innerHTML = `
             <div class="links-page-container fade-in">
@@ -2908,6 +3092,11 @@ class App {
                                 <option value="title_asc" ${this.sortMode === 'title_asc' ? 'selected' : ''}>Title A-Z</option>
                                 <option value="title_desc" ${this.sortMode === 'title_desc' ? 'selected' : ''}>Title Z-A</option>
                         </select>
+                        <select class="sort-select" onchange="app.setWidgetFilter(this.value)" style="min-width: 140px;">
+                                <option value="all" ${this.linkWidgetFilter === 'all' ? 'selected' : ''}>All Widgets</option>
+                                <option value="none" ${this.linkWidgetFilter === 'none' ? 'selected' : ''}>Unassigned</option>
+                                ${(this.linkWidgets || []).map(w => `<option value="${w.id}" ${this.linkWidgetFilter == w.id ? 'selected' : ''}>${w.title}</option>`).join('')}
+                        </select>
                         <div class="view-toggle">
                             <button class="view-toggle-btn ${this.viewMode === 'grid' ? 'active' : ''}" onclick="app.toggleViewMode('grid')" title="Grid View">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
@@ -2915,6 +3104,26 @@ class App {
                             <button class="view-toggle-btn ${this.viewMode === 'list' ? 'active' : ''}" onclick="app.toggleViewMode('list')" title="List View">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
                             </button>
+                        </div>
+                        <div class="dropdown-container">
+                            <button class="btn btn-ghost" onclick="this.nextElementSibling.classList.toggle('show'); event.stopPropagation();" title="View Settings">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            </button>
+                            <div class="dropdown-menu" style="min-width: 200px;">
+                                <div class="dropdown-header" style="padding: 8px 12px; font-weight: bold; border-bottom: 1px solid var(--color-border); font-size: 0.8rem;">Display Attributes</div>
+                                <label class="dropdown-item" style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="event.stopPropagation()">
+                                    <input type="checkbox" ${this.linkLibraryPrefs.showDescription ? 'checked' : ''} onchange="app.toggleLinkLibraryPref('showDescription')" style="margin:0;">
+                                    <span>Description</span>
+                                </label>
+                                <label class="dropdown-item" style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="event.stopPropagation()">
+                                    <input type="checkbox" ${this.linkLibraryPrefs.showStats ? 'checked' : ''} onchange="app.toggleLinkLibraryPref('showStats')" style="margin:0;">
+                                    <span>Stats (Clicks/Time)</span>
+                                </label>
+                                <label class="dropdown-item" style="display:flex; align-items:center; gap:8px; cursor:pointer;" onclick="event.stopPropagation()">
+                                    <input type="checkbox" ${this.linkLibraryPrefs.showAssignedWidget ? 'checked' : ''} onchange="app.toggleLinkLibraryPref('showAssignedWidget')" style="margin:0;">
+                                    <span>Widget Assignment</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="search-bar-wrapper">
                             <input type="text" id="links-search" placeholder="Search links or #tags..." class="search-input">
@@ -3022,7 +3231,15 @@ class App {
                 (l.custom_tags && l.custom_tags.some(t => t.toLowerCase().includes(term))) ||
                 (l.category && l.category.toLowerCase().includes(term));
             const matchesTag = this.activeLinkTag ? (l.custom_tags && l.custom_tags.includes(this.activeLinkTag)) : true;
-            return matchesSearch && matchesTag;
+
+            let matchesWidget = true;
+            if (this.linkWidgetFilter === 'none') {
+                matchesWidget = !l.widget_id;
+            } else if (this.linkWidgetFilter !== 'all') {
+                matchesWidget = l.widget_id == this.linkWidgetFilter;
+            }
+
+            return matchesSearch && matchesTag && matchesWidget;
         });
 
         filtered = this.sortItems(filtered, this.sortMode);
@@ -3041,13 +3258,42 @@ class App {
         }
     }
 
+    toggleLinkLibraryPref(key) {
+        this.linkLibraryPrefs[key] = !this.linkLibraryPrefs[key];
+        localStorage.setItem('linkLibraryPrefs', JSON.stringify(this.linkLibraryPrefs));
+        this.renderLinksPage();
+    }
+
+    async assignLinkToWidget(linkId, widgetId) {
+        try {
+            await api.updateLink(linkId, { widget_id: widgetId });
+            this.allLinks = await api.getLinks();
+            this.showToast('Widget assigned');
+            this.renderLinksPage();
+        } catch (err) {
+            this.showToast('Failed to assign widget', 'error');
+        }
+    }
+
     renderLinkCardInternal(l) {
         let tagsHtml = '';
         if (l.custom_tags && l.custom_tags.length) {
             tagsHtml = `<div class="link-card-tags">${l.custom_tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`;
         }
+
+        const prefs = this.linkLibraryPrefs;
+        const widget = l.widget_id ? (this.linkWidgets || []).find(w => w.id === l.widget_id) : null;
+
+        const widgetChoices = (this.linkWidgets || [])
+            .filter(w => w.config?.mode !== 'recent')
+            .map(w =>
+                `<div class="dropdown-item ${l.widget_id === w.id ? 'active' : ''}" onclick="event.stopPropagation(); app.assignLinkToWidget(${l.id}, ${w.id})">${w.title}</div>`
+            ).join('');
+        const unassignOption = l.widget_id ? `<div class="dropdown-item" style="color:var(--color-error); border-top:1px solid var(--color-border); margin-top:4px;" onclick="event.stopPropagation(); app.assignLinkToWidget(${l.id}, null)">❌ Unassign</div>` : '';
+        const fullMenu = widgetChoices + unassignOption;
+
         return `
-            <div class="link-card" data-id="${l.id}" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
+            <div class="link-card ${l.widget_id ? '' : 'unassigned'}" data-id="${l.id}" onclick="app.clickLink(${l.id}); window.open('${l.url}', '_blank')">
                 <div class="link-card-header">
                     <div class="link-card-icon">
                         ${l.custom_icon ?
@@ -3056,14 +3302,38 @@ class App {
             }
                     </div>
                     <div class="link-card-actions">
-                         <button onclick="event.stopPropagation(); app.editLink(${l.id})" class="btn-icon">✎</button>
-                         <button onclick="event.stopPropagation(); window.open('${l.url}', '_blank')" class="btn-icon">↗</button>
+                         <button onclick="event.stopPropagation(); app.editLink(${l.id})" class="btn-icon" title="Edit">✎</button>
+                         <button onclick="event.stopPropagation(); window.open('${l.url}', '_blank')" class="btn-icon" title="Open">↗</button>
                     </div>
                 </div>
                 <div class="link-card-body">
                     <div class="link-card-title" title="${l.title}">${l.title}</div>
                     <div class="link-card-url" title="${l.url}">${l.url.replace(/^https?:\/\//, '')}</div>
+                    
+                    ${prefs.showDescription && l.description ? `<div class="link-card-description">${this.sanitizeContent(l.description)}</div>` : ''}
+                    
                     ${tagsHtml}
+
+                    <div class="link-card-footer">
+                        ${prefs.showStats ? `
+                            <div class="link-card-stats">
+                                <span title="Clicks">🖱️ ${l.click_count || 0}</span>
+                                <span title="Last Clicked">${l.last_clicked ? this.timeAgo(l.last_clicked) : 'Never'}</span>
+                            </div>
+                        ` : ''}
+
+                        ${prefs.showAssignedWidget ? `
+                            <div class="link-card-assignment">
+                                <div class="dropdown-container">
+                                    ${widget ?
+                    `<button class="badge-widget clickable" onclick="app.toggleDropdown(this)" title="Change Widget">📦 ${widget.title}</button>` :
+                    `<button class="btn btn-sm btn-ghost" onclick="app.toggleDropdown(this)">➕ Add to Widget</button>`
+                }
+                                    <div class="dropdown-menu">${fullMenu}</div>
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
                 </div>
             </div>`;
     }
@@ -3073,6 +3343,16 @@ class App {
         if (l.custom_tags && l.custom_tags.length) {
             tagsHtml = `<div style="display:flex; gap:4px;">${l.custom_tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`;
         }
+
+        const prefs = this.linkLibraryPrefs;
+        const widget = l.widget_id ? (this.linkWidgets || []).find(w => w.id === l.widget_id) : null;
+        const widgetChoices = (this.linkWidgets || [])
+            .filter(w => w.config?.mode !== 'recent')
+            .map(w =>
+                `<div class="dropdown-item ${l.widget_id === w.id ? 'active' : ''}" onclick="event.stopPropagation(); app.assignLinkToWidget(${l.id}, ${w.id})">${w.title}</div>`
+            ).join('');
+        const unassignOption = l.widget_id ? `<div class="dropdown-item" style="color:var(--color-error); border-top:1px solid var(--color-border); margin-top:4px;" onclick="event.stopPropagation(); app.assignLinkToWidget(${l.id}, null)">❌ Unassign</div>` : '';
+        const fullMenu = widgetChoices + unassignOption;
 
         const iconHtml = l.custom_icon ?
             (l.custom_icon.match(/^(http|www)/) ? `<img src="${l.custom_icon}" onerror="this.style.display='none'">` : `<span>${l.custom_icon}</span>`)
@@ -3086,11 +3366,28 @@ class App {
                 <div class="list-item-meta" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                    ${tagsHtml}
                    <span class="link-url-dull">${l.url.replace(/^https?:\/\//, '').substring(0, 30)}...</span>
-                   <span style="color:var(--color-text-tertiary); font-size:0.7rem; border-left:1px solid var(--color-border); padding-left:8px;" title="Created: ${l.created_at ? new Date(l.created_at).toLocaleString() : 'Unknown'}">Created ${this.timeAgo(l.created_at)}</span>
-                   <span style="color:var(--color-text-tertiary); font-size:0.7rem;" title="Updated: ${l.updated_at ? new Date(l.updated_at).toLocaleString() : 'Unknown'}">Updated ${this.timeAgo(l.updated_at)}</span>
+                   
+                   ${prefs.showStats ? `
+                       <span style="color:var(--color-text-tertiary); font-size:0.7rem; border-left:1px solid var(--color-border); padding-left:8px;" title="Clicks">🖱️ ${l.click_count || 0}</span>
+                       <span style="color:var(--color-text-tertiary); font-size:0.7rem;" title="Last Clicked">Last: ${l.last_clicked ? this.timeAgo(l.last_clicked) : 'Never'}</span>
+                   ` : ''}
+
+                   ${prefs.showAssignedWidget && widget ? `
+                       <div class="dropdown-container">
+                           <span class="badge-widget-sm clickable" onclick="app.toggleDropdown(this)" title="Change Widget">📦 ${widget.title}</span>
+                           <div class="dropdown-menu">${fullMenu}</div>
+                       </div>
+                   ` : ''}
                 </div>
+                ${prefs.showDescription && l.description ? `<div style="font-size:0.8rem; color:var(--color-text-secondary); margin-top:4px; line-clamp:1; -webkit-line-clamp:1; display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden;">${this.sanitizeContent(l.description)}</div>` : ''}
             </div>
             <div class="list-item-actions">
+                ${prefs.showAssignedWidget && !widget ? `
+                    <div class="dropdown-container">
+                        <button class="btn btn-icon" onclick="app.toggleDropdown(this)" title="Add to Widget">➕</button>
+                        <div class="dropdown-menu dropdown-menu-right">${fullMenu}</div>
+                    </div>
+                ` : ''}
                 <button class="btn-icon" onclick="app.editLink(${l.id})">✎</button>
                 <button class="btn-icon" onclick="window.open('${l.url}', '_blank')">↗</button>
             </div>
@@ -3514,7 +3811,9 @@ class App {
             </div>
             <div class="note-card-content" onclick="app.openNoteModal(${note.id})">
                 ${tagsHtml}
-                <div class="note-content-preview">${safeContent}</div>
+                <div class="note-content-preview">
+                    ${note.is_code ? `<pre class="note-code-preview language-${note.code_language || 'plaintext'}"><code>${safeContent}</code></pre>` : safeContent}
+                </div>
             </div>
             <div class="note-card-meta">
                 <span class="note-age" title="Updated ${new Date(note.updated_at).toLocaleString()}">${age}</span>
@@ -3530,7 +3829,7 @@ class App {
     }
 
     // New workflow for fullpage creation
-    openAddNoteFullpage() {
+    openAddNoteFullpage(initialType = 'rich') {
         this._isDirty = false;
         this._currentFullpageNoteId = null; // New note
         const dateStr = new Date().toLocaleString();
@@ -3546,7 +3845,10 @@ class App {
                     <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" placeholder="Note title...">
                 </div>
                 <div class="note-fullpage-header-right">
-                    <span class="note-fullpage-meta">New Note</span>
+                    <div class="editor-type-switch" id="fullpage-note-type-switch">
+                        <button type="button" class="editor-type-btn ${initialType === 'rich' ? 'active' : ''}" data-type="rich">Standard</button>
+                        <button type="button" class="editor-type-btn ${initialType === 'code' ? 'active' : ''}" data-type="code">Code Block</button>
+                    </div>
                     <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(null)">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Create
@@ -3555,7 +3857,23 @@ class App {
             </div>
             <div class="note-fullpage-content">
                 <div class="note-fullpage-content-inner note-fullpage-editor">
-                    <div id="fullpage-note-editor" style="min-height: 300px;"></div>
+                    <div id="fullpage-rich-editor-container" style="height: 100%; ${initialType === 'code' ? 'display:none;' : ''}">
+                        <div id="fullpage-note-editor" style="min-height: 300px;"></div>
+                    </div>
+                    <div id="fullpage-code-editor-container" style="height: 100%; ${initialType === 'rich' ? 'display:none;' : ''}">
+                        <div id="fullpage-code-editor" style="height:100%;"></div>
+                        <div class="form-group" style="position: absolute; bottom: 80px; right: 20px; z-index: 10; width: 150px;">
+                            <select class="input input-sm" id="fullpage-code-lang">
+                                <option value="javascript">JavaScript</option>
+                                <option value="python">Python</option>
+                                <option value="htmlmixed">HTML/XML</option>
+                                <option value="css">CSS</option>
+                                <option value="clike">C/C++/Java</option>
+                                <option value="shell">Bash/Shell</option>
+                                <option value="markdown">Markdown</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="note-fullpage-footer">
@@ -3593,32 +3911,73 @@ class App {
         });
         this._fullpageQuill = quill;
 
+        let cm = null;
+        this._fullpageCM = null;
+        let currentEditorType = initialType;
+
+        const initCM = () => {
+            if (cm) return;
+            cm = CodeMirror(document.getElementById('fullpage-code-editor'), {
+                value: quill.getText().trim() || "",
+                mode: document.getElementById('fullpage-code-lang').value,
+                theme: 'material-darker',
+                lineNumbers: true,
+                tabSize: 4,
+                indentUnit: 4
+            });
+            this._fullpageCM = cm;
+            cm.on('change', () => { this._isDirty = true; });
+            setTimeout(() => cm.refresh(), 10);
+        };
+
+        if (initialType === 'code') initCM();
+
+        const switchBtns = document.querySelectorAll('#fullpage-note-type-switch .editor-type-btn');
+        switchBtns.forEach(btn => {
+            btn.onclick = () => {
+                const type = btn.dataset.type;
+                if (type === currentEditorType) return;
+                currentEditorType = type;
+                this._isDirty = true;
+                switchBtns.forEach(b => b.classList.toggle('active', b === btn));
+                document.getElementById('fullpage-rich-editor-container').style.display = type === 'rich' ? 'block' : 'none';
+                document.getElementById('fullpage-code-editor-container').style.display = type === 'code' ? 'block' : 'none';
+
+                if (type === 'code') {
+                    const content = quill.getText().trim();
+                    initCM();
+                    if (cm) {
+                        cm.setValue(content);
+                        cm.refresh();
+                    }
+                } else if (type === 'rich' && cm) {
+                    quill.setText(cm.getValue());
+                }
+            };
+        });
+
+        document.getElementById('fullpage-code-lang').onchange = (e) => {
+            if (cm) cm.setOption('mode', e.target.value);
+            this._isDirty = true;
+        };
+
         // Dirty tracking
         quill.on('text-change', () => { this._isDirty = true; });
         document.querySelector('.note-fullpage-header')?.addEventListener('input', () => { this._isDirty = true; });
+
         // Init Tag Input
         const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), []);
         this._fullpageTagInput = tagInput;
 
-        // Focus content editor instead of title
-        setTimeout(() => this._fullpageQuill.focus(), 100);
+        // Focus
+        if (currentEditorType === 'rich') quill.focus();
+        else if (cm) cm.focus();
+    }
 
-        // ESC Handler
-        if (!this._noteFullpageEscHandler) {
-            this._noteFullpageEscHandler = (e) => {
-                if (e.key === 'Escape') this.closeNoteFullpage();
-            };
-            document.addEventListener('keydown', this._noteFullpageEscHandler);
-        }
-
-        // Save Shortcut
-        this._noteFullpageSaveHandler = (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-                e.preventDefault();
-                this.saveNoteFullpage(null);
-            }
-        };
-        document.addEventListener('keydown', this._noteFullpageSaveHandler);
+    // Helper for direct code block creation
+    openAddCodeModal() {
+        this.closeAddMenu();
+        this.openAddNoteFullpage('code');
     }
 
     async editNote(id) {
@@ -3673,7 +4032,7 @@ class App {
             <div class="note-fullpage-content">
                 <div class="note-fullpage-content-inner">
                     <div class="note-fullpage-view ql-editor">
-                        ${note.is_code ? `<pre class="note-code"><code>${safeContent}</code></pre>` : safeContent}
+                        ${note.is_code ? `<pre class="note-code language-${note.code_language || 'plaintext'}"><code>${safeContent}</code></pre>` : safeContent}
                     </div>
                     <div class="note-fullpage-tags">
                         <div class="note-fullpage-tags-label">Tags</div>
@@ -3682,6 +4041,11 @@ class App {
                 </div>
             </div>
         `;
+
+        // Highlight if code
+        if (note.is_code && window.hljs) {
+            setTimeout(() => hljs.highlightAll(), 0);
+        }
 
         // Show the overlay with animation
         requestAnimationFrame(() => {
@@ -3723,7 +4087,10 @@ class App {
                     <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" value="${note.title}" placeholder="Note title...">
                 </div>
                 <div class="note-fullpage-header-right">
-                    <span class="note-fullpage-meta">Created: ${createdDate}</span>
+                    <div class="editor-type-switch" id="fullpage-note-type-switch">
+                        <button type="button" class="editor-type-btn ${!note.is_code ? 'active' : ''}" data-type="rich">Standard</button>
+                        <button type="button" class="editor-type-btn ${note.is_code ? 'active' : ''}" data-type="code">Code Block</button>
+                    </div>
                     <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(${id})">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         Save
@@ -3732,7 +4099,23 @@ class App {
             </div>
             <div class="note-fullpage-content">
                 <div class="note-fullpage-content-inner note-fullpage-editor">
-                    <div id="fullpage-note-editor">${content}</div>
+                    <div id="fullpage-rich-editor-container" style="height: 100%; ${note.is_code ? 'display:none;' : ''}">
+                        <div id="fullpage-note-editor">${content}</div>
+                    </div>
+                    <div id="fullpage-code-editor-container" style="height: 100%; ${!note.is_code ? 'display:none;' : ''}">
+                        <div id="fullpage-code-editor" style="height:100%;"></div>
+                        <div class="form-group" style="position: absolute; bottom: 80px; right: 20px; z-index: 10; width: 150px;">
+                            <select class="input input-sm" id="fullpage-code-lang">
+                                <option value="javascript" ${note.code_language === 'javascript' ? 'selected' : ''}>JavaScript</option>
+                                <option value="python" ${note.code_language === 'python' ? 'selected' : ''}>Python</option>
+                                <option value="htmlmixed" ${note.code_language === 'htmlmixed' ? 'selected' : ''}>HTML/XML</option>
+                                <option value="css" ${note.code_language === 'css' ? 'selected' : ''}>CSS</option>
+                                <option value="clike" ${note.code_language === 'clike' ? 'selected' : ''}>C/C++/Java</option>
+                                <option value="shell" ${note.code_language === 'shell' ? 'selected' : ''}>Bash/Shell</option>
+                                <option value="markdown" ${note.code_language === 'markdown' ? 'selected' : ''}>Markdown</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="note-fullpage-footer">
@@ -3773,15 +4156,56 @@ class App {
             }
         });
 
-        if (!quill) {
-            console.error('Failed to initialize Quill editor');
-            this.showToast('Error loading editor', 'error');
-            this.closeNoteFullpage();
-            return;
-        }
-
-        // Store quill instance for save
         this._fullpageQuill = quill;
+        let cm = null;
+        this._fullpageCM = null;
+        let currentEditorType = note.is_code ? 'code' : 'rich';
+
+        const initCM = () => {
+            if (cm) return;
+            cm = CodeMirror(document.getElementById('fullpage-code-editor'), {
+                value: note.is_code ? note.content : (quill.getText().trim() || ""),
+                mode: document.getElementById('fullpage-code-lang').value,
+                theme: 'material-darker',
+                lineNumbers: true,
+                tabSize: 4,
+                indentUnit: 4
+            });
+            this._fullpageCM = cm;
+            cm.on('change', () => { this._isDirty = true; });
+            setTimeout(() => cm.refresh(), 10);
+        };
+
+        if (note.is_code) initCM();
+
+        const switchBtns = document.querySelectorAll('#fullpage-note-type-switch .editor-type-btn');
+        switchBtns.forEach(btn => {
+            btn.onclick = () => {
+                const type = btn.dataset.type;
+                if (type === currentEditorType) return;
+                currentEditorType = type;
+                this._isDirty = true;
+                switchBtns.forEach(b => b.classList.toggle('active', b === btn));
+                document.getElementById('fullpage-rich-editor-container').style.display = type === 'rich' ? 'block' : 'none';
+                document.getElementById('fullpage-code-editor-container').style.display = type === 'code' ? 'block' : 'none';
+
+                if (type === 'code') {
+                    const content = quill.getText().trim();
+                    initCM();
+                    if (cm) {
+                        cm.setValue(content);
+                        cm.refresh();
+                    }
+                } else if (type === 'rich' && cm) {
+                    quill.setText(cm.getValue());
+                }
+            };
+        });
+
+        document.getElementById('fullpage-code-lang').onchange = (e) => {
+            if (cm) cm.setOption('mode', e.target.value);
+            this._isDirty = true;
+        };
 
         // Track changes for dirty check
         quill.on('text-change', () => {
@@ -3824,7 +4248,10 @@ class App {
     // Save note from fullpage edit
     async saveNoteFullpage(id) {
         const title = document.getElementById('fullpage-note-title')?.value || 'Untitled';
-        const content = this._fullpageQuill?.root.innerHTML || '';
+        const typeBtn = document.querySelector('#fullpage-note-type-switch .editor-type-btn.active');
+        const isCode = typeBtn?.dataset.type === 'code';
+        const content = isCode ? this._fullpageCM?.getValue() : (this._fullpageQuill?.root.innerHTML || '');
+        const codeLang = isCode ? document.getElementById('fullpage-code-lang')?.value : null;
         const tags = this._fullpageTagInput?.getTags() || [];
         const showAsWidget = document.getElementById('fullpage-note-widget')?.checked || false;
 
@@ -3835,60 +4262,59 @@ class App {
         }
 
         try {
-            try {
-                if (id) {
-                    // UPDATE existing
-                    await api.updateNote(id, {
-                        title: title,
-                        content: content,
-                        show_as_widget: showAsWidget,
-                        tags: tags
-                    });
-                    this.showToast('Note updated');
-                } else {
-                    // CREATE new
-                    let displayTitle = title;
-                    if (!displayTitle || displayTitle === 'Untitled') {
-                        const text = this._fullpageQuill.getText().trim();
-                        displayTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
-                        if (!displayTitle) displayTitle = 'Untitled Note';
-                    }
-
-                    // If widget enabled, calculate position
-                    let wx = 0, wy = 0;
-                    if (showAsWidget) {
-                        const { x, y } = await this.getSmartBottomPosition(3, 2);
-                        wx = x; wy = y;
-                    }
-
-                    await api.createNote({
-                        title: displayTitle,
-                        content: content,
-                        show_as_widget: showAsWidget,
-                        tags: tags,
-                        widget_grid_x: wx,
-                        widget_grid_y: wy,
-                        widget_grid_w: 3,
-                        widget_grid_h: 2
-                    });
-                    this.showToast('Note created');
+            if (id) {
+                // UPDATE existing
+                await api.updateNote(id, {
+                    title: title,
+                    content: content,
+                    show_as_widget: showAsWidget,
+                    is_code: isCode,
+                    code_language: codeLang,
+                    tags: tags
+                });
+                this.showToast('Note updated');
+            } else {
+                // CREATE new
+                let displayTitle = title;
+                if (!displayTitle || displayTitle === 'Untitled') {
+                    const text = this._fullpageQuill.getText().trim();
+                    displayTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
+                    if (!displayTitle) displayTitle = 'Untitled Note';
                 }
-                this._isDirty = false; // Clear before closing
-                this.closeNoteFullpage(true); // Force close
 
-                if (this.currentPage === 'notes') this.renderNotesPage();
-                else if (this.currentPage === 'dashboard') await this.initDashboard();
-                else this.refreshRecentWidgets('notes');
-            } catch (err) {
-                this.showToast('Failed to save note: ' + err.message, 'error');
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+                // If widget enabled, calculate position
+                let wx = 0, wy = 0;
+                if (showAsWidget) {
+                    const { x, y } = await this.getSmartBottomPosition(3, 2);
+                    wx = x; wy = y;
                 }
+
+                await api.createNote({
+                    title: displayTitle,
+                    content: content,
+                    show_as_widget: showAsWidget,
+                    is_code: isCode,
+                    code_language: codeLang,
+                    tags: tags,
+                    widget_grid_x: wx,
+                    widget_grid_y: wy,
+                    widget_grid_w: 3,
+                    widget_grid_h: 2
+                });
+                this.showToast('Note created');
             }
-        } catch (error) {
-            console.error('Critical error in saveNoteFullpage:', error);
-            this.showToast('Critical error saving note', 'error');
+            this._isDirty = false; // Clear before closing
+            this.closeNoteFullpage(true); // Force close
+
+            if (this.currentPage === 'notes') this.renderNotesPage();
+            else if (this.currentPage === 'dashboard') await this.initDashboard();
+            else this.refreshRecentWidgets('notes');
+        } catch (err) {
+            this.showToast('Failed to save note: ' + err.message, 'error');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+            }
         }
     }
 
@@ -3983,19 +4409,24 @@ class App {
                 <div class="form-group"><label class="checkbox"><input type="checkbox" name="showCurrentTime" ${config.showCurrentTime ? 'checked' : ''}> Show Current Time</label></div>
                 <div class="form-group"><label class="checkbox"><input type="checkbox" name="showForecast" ${config.showForecast !== false ? 'checked' : ''}> Show 5-Day Forecast</label></div>
 
+                <div class="dropdown-header" style="padding: 12px 0 8px; font-weight: bold; border-top: 1px solid var(--color-border); margin-top: 8px; font-size: 0.8rem;">General Display Settings</div>
+                <div class="form-group"><label class="checkbox"><input type="checkbox" name="hide_title" ${config.hide_title ? 'checked' : ''}> Hide Title Bar (Show on hover)</label></div>
+
                 <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
             </form>`);
             document.getElementById('widget-config-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const form = e.target;
                 const newConfig = {
+                    ...config,
                     location: form.location.value,
                     dateFormat: form.dateFormat.value,
                     timeFormat: form.timeFormat.value,
                     showCurrentTemp: form.showCurrentTemp.checked,
                     showCurrentDate: form.showCurrentDate.checked,
                     showCurrentTime: form.showCurrentTime.checked,
-                    showForecast: form.showForecast.checked
+                    showForecast: form.showForecast.checked,
+                    hide_title: form.hide_title.checked
                 };
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
                 this.closeModal();
@@ -4016,6 +4447,11 @@ class App {
                         <option value="recent" ${config.mode === 'recent' ? 'selected' : ''}>Recent</option>
                     </select>
                 </div>
+
+                <script>
+                    // Add interactivity to the config modal without global scope if possible
+                    // However, our modals are simple innerHTML. We'll use a direct change listener.
+                </script>
                 
                 <div class="form-group" id="limit-group" style="${config.mode === 'recent' ? '' : 'display:none'}">
                     <label class="form-label">Item Count</label>
@@ -4027,7 +4463,20 @@ class App {
                     <div class="form-group"><label class="checkbox"><input type="checkbox" name="showIcon" ${config.showIcon !== false ? 'checked' : ''}> Show Icons</label></div>
                     <div class="form-group"><label class="checkbox"><input type="checkbox" name="showTitle" ${config.showTitle !== false ? 'checked' : ''}> Show Titles</label></div>
                     <div class="form-group"><label class="checkbox"><input type="checkbox" name="showTags" ${config.showTags === true ? 'checked' : ''}> Show Tags</label></div>
+                    <div class="form-group"><label class="checkbox"><input type="checkbox" name="icons_only" ${config.icons_only ? 'checked' : ''} onchange="const g = document.getElementById('icon-size-group'); if(g) g.style.display = this.checked ? 'block' : 'none'"> Icons Only Mode (Grid)</label></div>
+                    
+                    <div class="form-group" id="icon-size-group" style="${config.icons_only ? '' : 'display:none'}">
+                        <label class="form-label">Icon Size</label>
+                        <select class="input" name="icon_size">
+                            <option value="sm" ${config.icon_size === 'sm' ? 'selected' : ''}>Small (32px)</option>
+                            <option value="md" ${config.icon_size === 'md' || !config.icon_size ? 'selected' : ''}>Medium (48px)</option>
+                            <option value="lg" ${config.icon_size === 'lg' ? 'selected' : ''}>Large (72px)</option>
+                        </select>
+                    </div>
                 ` : ''}
+
+                <div class="dropdown-header" style="padding: 12px 0 8px; font-weight: bold; border-top: 1px solid var(--color-border); margin-top: 8px; font-size: 0.8rem;">General Display Settings</div>
+                <div class="form-group"><label class="checkbox"><input type="checkbox" name="hide_title" ${config.hide_title ? 'checked' : ''}> Hide Title Bar (Show on hover)</label></div>
 
                 <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
             </form>`);
@@ -4036,8 +4485,10 @@ class App {
                 e.preventDefault();
                 const form = e.target;
                 const newConfig = {
+                    ...config,
                     mode: form.mode.value,
-                    limit: parseInt(form.limit.value) || 10
+                    limit: parseInt(form.limit.value) || 10,
+                    hide_title: form.hide_title.checked
                 };
 
                 if (isLinks) {
@@ -4045,6 +4496,8 @@ class App {
                     newConfig.showIcon = form.showIcon.checked;
                     newConfig.showTitle = form.showTitle.checked;
                     newConfig.showTags = form.showTags.checked;
+                    newConfig.icons_only = form.icons_only.checked;
+                    newConfig.icon_size = form.icon_size ? form.icon_size.value : 'md';
                 }
 
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
@@ -4068,6 +4521,9 @@ class App {
                 
                 <div class="form-group"><label class="checkbox"><input type="checkbox" name="showCompleted" ${config.showCompleted !== false ? 'checked' : ''}> Show completed tasks</label></div>
                 
+                <div class="dropdown-header" style="padding: 12px 0 8px; font-weight: bold; border-top: 1px solid var(--color-border); margin-top: 8px; font-size: 0.8rem;">General Display Settings</div>
+                <div class="form-group"><label class="checkbox"><input type="checkbox" name="hide_title" ${config.hide_title ? 'checked' : ''}> Hide Title Bar (Show on hover)</label></div>
+
                 <p class="help-text" style="margin-bottom: var(--spacing-md);">Tip: Drag items to reorder. Use arrow buttons to nest sub-tasks.</p>
 
                 <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
@@ -4079,7 +4535,8 @@ class App {
                 const newConfig = {
                     ...config,
                     displayMode: form.displayMode.value,
-                    showCompleted: form.showCompleted.checked
+                    showCompleted: form.showCompleted.checked,
+                    hide_title: form.hide_title.checked
                 };
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
                 this.closeModal();
@@ -4114,24 +4571,53 @@ class App {
                 <div class="form-group"><label class="checkbox"><input type="checkbox" name="showDate" ${config.showDate !== false ? 'checked' : ''}> Show Date</label></div>
                 <div class="form-group"><label class="checkbox"><input type="checkbox" name="showCalendar" ${config.showCalendar ? 'checked' : ''}> Show Monthly Calendar</label></div>
 
+                <div class="dropdown-header" style="padding: 12px 0 8px; font-weight: bold; border-top: 1px solid var(--color-border); margin-top: 8px; font-size: 0.8rem;">General Display Settings</div>
+                <div class="form-group"><label class="checkbox"><input type="checkbox" name="hide_title" ${config.hide_title ? 'checked' : ''}> Hide Title Bar (Show on hover)</label></div>
+
                 <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
             </form>`);
             document.getElementById('widget-config-form').addEventListener('submit', async e => {
                 e.preventDefault();
                 const form = e.target;
                 const newConfig = {
+                    ...config,
                     dateFormat: form.dateFormat.value,
                     timeFormat: form.timeFormat.value,
                     showTime: form.showTime.checked,
                     showDate: form.showDate.checked,
-                    showCalendar: form.showCalendar.checked
+                    showCalendar: form.showCalendar.checked,
+                    hide_title: form.hide_title.checked
                 };
                 await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
                 this.closeModal();
                 this.showToast('Widget configured');
                 this.refreshWidget(widgetId);
             });
+            return;
         }
+
+        // Default handler for widgets without specialized config
+        this.showModal(`Configure ${widget.widget_type.charAt(0).toUpperCase() + widget.widget_type.slice(1)} Widget`, `<form id="widget-config-form">
+            <div class="form-group"><label class="form-label">Widget Title</label><input class="input" name="title" value="${widget.title}"></div>
+            
+            <div class="dropdown-header" style="padding: 12px 0 8px; font-weight: bold; border-top: 1px solid var(--color-border); margin-top: 8px; font-size: 0.8rem;">General Display Settings</div>
+            <div class="form-group"><label class="checkbox"><input type="checkbox" name="hide_title" ${config.hide_title ? 'checked' : ''}> Hide Title Bar (Show on hover)</label></div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
+        </form>`);
+
+        document.getElementById('widget-config-form').addEventListener('submit', async e => {
+            e.preventDefault();
+            const form = e.target;
+            const newConfig = {
+                ...config,
+                hide_title: form.hide_title.checked
+            };
+            await api.updateWidget(widgetId, { title: form.title.value, config: newConfig });
+            this.closeModal();
+            this.showToast('Widget configured');
+            this.refreshWidget(widgetId);
+        });
     }
 
     openSettings() {

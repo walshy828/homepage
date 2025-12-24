@@ -223,7 +223,6 @@ class NoteUpdate(BaseModel):
     code_language: Optional[str] = None
     category: Optional[str] = None
     color: Optional[str] = None
-    color: Optional[str] = None
     is_pinned: Optional[bool] = None
     tags: Optional[List[str]] = None
     show_as_widget: Optional[bool] = None
