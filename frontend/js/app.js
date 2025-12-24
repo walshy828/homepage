@@ -2308,6 +2308,8 @@ class App {
 
         let draggedItem = null;
 
+        const isGrid = list.classList.contains('link-grid');
+
         list.querySelectorAll('[draggable="true"]').forEach(item => {
             item.addEventListener('dragstart', (e) => {
                 draggedItem = item;
@@ -2324,12 +2326,25 @@ class App {
             item.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 if (!draggedItem || draggedItem === item) return;
+
                 const rect = item.getBoundingClientRect();
-                const midY = rect.top + rect.height / 2;
-                if (e.clientY < midY) {
-                    item.parentNode.insertBefore(draggedItem, item);
+
+                if (isGrid) {
+                    // For grid, check horizontal center
+                    const midX = rect.left + rect.width / 2;
+                    if (e.clientX < midX) {
+                        list.insertBefore(draggedItem, item);
+                    } else {
+                        list.insertBefore(draggedItem, item.nextSibling);
+                    }
                 } else {
-                    item.parentNode.insertBefore(draggedItem, item.nextSibling);
+                    // For list, check vertical center
+                    const midY = rect.top + rect.height / 2;
+                    if (e.clientY < midY) {
+                        list.insertBefore(draggedItem, item);
+                    } else {
+                        list.insertBefore(draggedItem, item.nextSibling);
+                    }
                 }
             });
         });

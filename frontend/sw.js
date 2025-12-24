@@ -3,7 +3,7 @@
  * Enables offline functionality and caching for PWA
  */
 
-const CACHE_NAME = 'homepage-dashboard-v1';
+const CACHE_NAME = 'homepage-dashboard-v2';
 const urlsToCache = [
     '/',
     '/index.html',
@@ -45,7 +45,7 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - improved caching strategy
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
@@ -55,38 +55,38 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    event.respondWith(
-        caches.match(request)
-            .then((response) => {
-                // Cache hit - return response
-                if (response) {
+    // 1. Navigation requests (index.html) - Network First
+    if (request.mode === 'navigate') {
+        event.respondWith(
+            fetch(request)
+                .then((response) => {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
                     return response;
-                }
+                })
+                .catch(() => caches.match('/index.html'))
+        );
+        return;
+    }
 
-                // Clone the request
-                const fetchRequest = request.clone();
-
-                return fetch(fetchRequest).then((response) => {
-                    // Check if valid response
-                    if (!response || response.status !== 200 || response.type !== 'basic') {
-                        return response;
-                    }
-
-                    // Clone the response
-                    const responseToCache = response.clone();
-
+    // 2. Static Assets - Stale-While-Revalidate
+    event.respondWith(
+        caches.match(request).then((cachedResponse) => {
+            const fetchPromise = fetch(request).then((networkResponse) => {
+                if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+                    const responseToCache = networkResponse.clone();
                     caches.open(CACHE_NAME).then((cache) => {
                         cache.put(request, responseToCache);
                     });
+                }
+                return networkResponse;
+            }).catch(() => {
+                // If network fails and no cache, just let it fail or return cached
+                return cachedResponse;
+            });
 
-                    return response;
-                }).catch(() => {
-                    // Offline fallback - return cached index for navigation requests
-                    if (request.mode === 'navigate') {
-                        return caches.match('/index.html');
-                    }
-                });
-            })
+            return cachedResponse || fetchPromise;
+        })
     );
 });
 
