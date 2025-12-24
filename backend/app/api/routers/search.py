@@ -3,7 +3,7 @@ Homepage Dashboard - Search Router
 """
 from typing import List, Union
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, or_, desc
+from sqlalchemy import select, or_, desc, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -36,6 +36,13 @@ async def search_global(
     results = []
     
     # 1. Search Links
+    relevancy_score = case(
+        (Link.url.ilike(search_term), 10),
+        (Link.title.ilike(search_term), 5),
+        (Link.description.ilike(search_term), 1),
+        else_=0
+    )
+    
     link_query = select(Link).where(
         Link.owner_id == current_user.id,
         or_(
@@ -43,7 +50,7 @@ async def search_global(
             Link.url.ilike(search_term),
             Link.description.ilike(search_term)
         )
-    ).limit(10)
+    ).order_by(desc(relevancy_score)).limit(10)
     
     link_results = await db.execute(link_query)
     for link in link_results.scalars():

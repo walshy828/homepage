@@ -4,7 +4,7 @@ Homepage Dashboard - Links Router
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -66,16 +66,25 @@ async def list_links(
                 Link.description.ilike(search_term)
             )
         )
+        
+        # Calculate relevancy score
+        relevancy_score = case(
+            (Link.url.ilike(search_term), 10),
+            (Link.title.ilike(search_term), 5),
+            (Link.description.ilike(search_term), 1),
+            else_=0
+        )
+        query = query.order_by(desc(relevancy_score))
     
-    
-    if sort_by == "recent":
-        # Sort by last_clicked desc, then created_at
-        query = query.order_by(Link.last_clicked.desc().nulls_last(), Link.created_at.desc())
-    elif sort_by == "popular":
-        # Sort by click_count desc
-        query = query.order_by(Link.click_count.desc(), Link.created_at.desc())
-    else:
-        query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.desc())
+    if not search:
+        if sort_by == "recent":
+            # Sort by last_clicked desc, then created_at
+            query = query.order_by(Link.last_clicked.desc().nulls_last(), Link.created_at.desc())
+        elif sort_by == "popular":
+            # Sort by click_count desc
+            query = query.order_by(Link.click_count.desc(), Link.created_at.desc())
+        else:
+            query = query.order_by(Link.is_pinned.desc(), Link.display_order, Link.created_at.desc())
     
     result = await db.execute(query)
     return result.scalars().all()
