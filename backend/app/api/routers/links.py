@@ -199,7 +199,13 @@ async def categorize_links(
 async def preview_link(url: str = Query(..., description="URL to preview")):
     """Fetch Open Graph metadata for a URL."""
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=5.0) as client:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        # verify=False helps with internal services using self-signed certs
+        async with httpx.AsyncClient(follow_redirects=True, timeout=5.0, verify=False, headers=headers) as client:
             response = await client.get(url)
             response.raise_for_status()
             
@@ -210,9 +216,9 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
             image = None
             
             # Try Open Graph tags first
-            og_title = soup.find("meta", property="og:title")
-            og_desc = soup.find("meta", property="og:description")
-            og_image = soup.find("meta", property="og:image")
+            og_title = soup.find("meta", property="og:title") or soup.find("meta", attrs={"name": "og:title"})
+            og_desc = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "og:description"})
+            og_image = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "og:image"})
             
             if og_title:
                 title = og_title.get("content")
@@ -232,15 +238,24 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
                 if desc_tag:
                     description = desc_tag.get("content")
             
-            # Favicons
+            # Favicons - Improved search
             favicon = None
-            icon_tags = soup.find_all("link", rel=lambda x: x and 'icon' in x.lower())
-            for tag in icon_tags:
-                tag_href = tag.get("href")
-                if tag_href:
-                    favicon = tag_href
-                    if tag.get('rel') and 'apple-touch-icon' in tag.get('rel'):
-                        break
+            # Check for apple-touch-icon first as it's usually higher quality
+            apple_icon = soup.find("link", rel=lambda x: x and 'apple-touch-icon' in x.lower())
+            if apple_icon:
+                favicon = apple_icon.get("href")
+            
+            if not favicon:
+                # Then check for standard icons or shortcut icons
+                icon_tag = soup.find("link", rel=lambda x: x and x.lower() in ['icon', 'shortcut icon'])
+                if icon_tag:
+                    favicon = icon_tag.get("href")
+            
+            if not favicon:
+                # Broad search if still nothing
+                icon_tag = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
+                if icon_tag:
+                    favicon = icon_tag.get("href")
             
             from urllib.parse import urljoin
             if image and not image.startswith(("http://", "https://")):
@@ -262,7 +277,7 @@ async def preview_link(url: str = Query(..., description="URL to preview")):
     except Exception as e:
         # Don't fail hard, just return what we have (or empty)
         print(f"Error fetching preview for {url}: {e}")
-        return LinkPreviewResponse(url=url, title="Preview unavailable")
+        return LinkPreviewResponse(url=url, title=None, description=None, image=None, favicon=None)
 
 
 @router.get("/{link_id}", response_model=LinkResponse)
