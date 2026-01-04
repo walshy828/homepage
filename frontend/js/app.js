@@ -4110,19 +4110,20 @@ class App {
             <div class="note-fullpage-header">
                 <div class="note-fullpage-header-left">
                     <button class="note-fullpage-back" onclick="app.closeNoteFullpage()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-                        Cancel
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        Close
                     </button>
                     <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" placeholder="Note title...">
                 </div>
                 <div class="note-fullpage-header-right">
+                    <span class="note-fullpage-meta" style="font-size: 12px; color: var(--color-text-tertiary); margin-right: 10px;"></span>
                     <div class="editor-type-switch" id="fullpage-note-type-switch">
                         <button type="button" class="editor-type-btn ${initialType === 'rich' ? 'active' : ''}" data-type="rich">Standard</button>
                         <button type="button" class="editor-type-btn ${initialType === 'code' ? 'active' : ''}" data-type="code">Code Block</button>
                     </div>
                     <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(null)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                        Create
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Done
                     </button>
                 </div>
             </div>
@@ -4276,8 +4277,8 @@ class App {
             this.refreshRecentWidgets('notes'); // Refresh recent notes on view
         } catch (e) { console.error("Failed to track view", e); }
 
-        // Use fullpage view for desktop
-        this.openNoteFullpage(id);
+        // Skip "read-only" view and go straight to edit
+        this.editNoteFullpage(id);
     }
 
     // Full-page note viewing
@@ -4377,19 +4378,20 @@ class App {
             <div class="note-fullpage-header">
                 <div class="note-fullpage-header-left">
                     <button class="note-fullpage-back" onclick="app.closeNoteFullpage()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-                        Cancel
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        Close
                     </button>
                     <input type="text" class="note-fullpage-title-input" id="fullpage-note-title" value="${note.title}" placeholder="Note title...">
                 </div>
                 <div class="note-fullpage-header-right">
+                    <span class="note-fullpage-meta" style="font-size: 12px; color: var(--color-text-tertiary); margin-right: 10px;"></span>
                     <div class="editor-type-switch" id="fullpage-note-type-switch">
                         <button type="button" class="editor-type-btn ${!note.is_code ? 'active' : ''}" data-type="rich">Standard</button>
                         <button type="button" class="editor-type-btn ${note.is_code ? 'active' : ''}" data-type="code">Code Block</button>
                     </div>
                     <button class="btn btn-primary" id="fullpage-save-btn" onclick="app.saveNoteFullpage(${id})">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                        Save
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Done
                     </button>
                 </div>
             </div>
@@ -4594,7 +4596,7 @@ class App {
         const saveBtn = document.getElementById('fullpage-save-btn');
         if (saveBtn && !isAutoSave) {
             saveBtn.disabled = true;
-            saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
+            saveBtn.innerHTML = '<span class="spinner"></span>';
         }
 
         try {
@@ -4677,7 +4679,7 @@ class App {
 
             if (saveBtn) {
                 saveBtn.disabled = false;
-                saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
+                saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Done';
             }
         }
     }

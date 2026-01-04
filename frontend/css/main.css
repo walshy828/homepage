@@ -1408,7 +1408,40 @@ a:hover {
     border-bottom: 2px solid transparent;
     padding: var(--spacing-xs) 0;
     min-width: 300px;
+    width: 600px;
     transition: border-color var(--transition-fast);
+}
+
+.note-fullpage-title-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+
+.note-fullpage-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.note-fullpage-content {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--color-bg-primary);
+    padding: var(--spacing-xl) 0;
+}
+
+.note-fullpage-content-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    background: var(--color-bg-widget);
+    min-height: 100%;
+    padding: 0;
+    box-shadow: var(--shadow-sm);
+    /* Remove border radius for seamless feel, or keep it slight */
+    border-radius: var(--radius-lg);
+}
+
+transition: border-color var(--transition-fast);
 }
 
 .note-fullpage-title-input:focus {
