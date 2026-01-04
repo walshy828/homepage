@@ -77,7 +77,7 @@ class TagInput {
     }
 }
 
-class SearchController {
+class CommandPaletteController {
     constructor(app, containerId = 'global-search-bar') {
         this.app = app;
         this.container = document.getElementById(containerId);
@@ -86,6 +86,15 @@ class SearchController {
         this.timeout = null;
         this.selectedIndex = -1;
         this.results = [];
+        this.actions = [
+            { id: 'action-new-note', type: 'action', title: 'New Note', subtitle: 'Open note editor', icon: '📝', handler: () => this.app.openAddNoteFullpage() },
+            { id: 'action-new-link', type: 'action', title: 'New Link', subtitle: 'Add a new link', icon: '🔗', handler: () => this.app.openAddLinkModal() },
+            { id: 'action-theme', type: 'action', title: 'Toggle Theme', subtitle: 'Switch light/dark mode', icon: '🌓', handler: () => this.app.toggleTheme() },
+            { id: 'action-dash', type: 'action', title: 'Go to Dashboard', subtitle: 'Navigate to dashboard', icon: '🏠', handler: () => this.app.showDashboard() },
+            { id: 'action-links', type: 'action', title: 'Go to Links', subtitle: 'Manage links library', icon: '🌐', handler: () => this.app.showLinksPage() },
+            { id: 'action-notes', type: 'action', title: 'Go to Notes', subtitle: 'Manage notes library', icon: '📒', handler: () => this.app.showNotesPage() },
+            { id: 'action-help', type: 'action', title: 'Keyboard Shortcuts', subtitle: 'View available shortcuts', icon: '⌨️', handler: () => this.app.showKeyboardHelp() }
+        ];
         this.init();
     }
 
@@ -95,7 +104,11 @@ class SearchController {
         this.input.addEventListener('input', (e) => this.handleInput(e));
         this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
         this.input.addEventListener('focus', () => {
-            if (this.input.value.trim().length > 0) this.dropdown.style.display = 'block';
+            if (this.input.value.trim().length === 0) {
+                this.showDefaultActions();
+            } else {
+                this.dropdown.style.display = 'block';
+            }
         });
 
         // Close dropdown when clicking outside
@@ -110,8 +123,15 @@ class SearchController {
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
                 e.preventDefault();
                 this.input.focus();
+                this.showDefaultActions();
             }
         });
+    }
+
+    showDefaultActions() {
+        this.results = [...this.actions];
+        this.renderResults(true); // true = isDefault/Actions only
+        this.dropdown.style.display = 'block';
     }
 
     handleInput(e) {
@@ -120,15 +140,16 @@ class SearchController {
         if (this.timeout) clearTimeout(this.timeout);
 
         if (query.length === 0) {
-            this.closeDropdown();
+            this.showDefaultActions();
             return;
         }
 
-        this.timeout = setTimeout(() => this.performSearch(query), 300);
+        this.timeout = setTimeout(() => this.performSearch(query), 200);
     }
 
     handleKeydown(e) {
-        if (!this.results.length) return;
+        // Support navigation even if no results (visual feedback)
+        if (!this.results.length && this.dropdown.style.display === 'none') return;
 
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -142,12 +163,8 @@ class SearchController {
             e.preventDefault();
             if (this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
                 const item = this.results[this.selectedIndex];
-                if (item.type === 'link') {
-                    window.open(item.url, '_blank');
-                } else if (item.type === 'note') {
-                    this.app.openNoteModal(item.id);
-                }
-                this.closeDropdown();
+                this.selectItem(item);
+                this.input.blur(); // Blur after selection
             }
         } else if (e.key === 'Tab') {
             if (this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
@@ -160,12 +177,50 @@ class SearchController {
             }
         } else if (e.key === 'Escape') {
             this.closeDropdown();
+            this.input.blur();
         }
     }
 
     async performSearch(query) {
         try {
-            this.results = await api.search(query);
+            const isUrl = /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(query);
+            const dynamicActions = [];
+
+            // Always offer to create a note
+            if (query.length > 0) {
+                dynamicActions.push({
+                    id: 'quick-create-note',
+                    type: 'action',
+                    title: `Create Note: "${query}"`,
+                    subtitle: 'Start writing a new note',
+                    icon: '📝',
+                    handler: () => this.app.openAddNoteFullpage('rich', query)
+                });
+            }
+
+            // If it looks like a URL, offer to add link as the primary action
+            if (isUrl) {
+                dynamicActions.unshift({
+                    id: 'quick-add-link',
+                    type: 'action',
+                    title: `Add Link: ${query}`,
+                    subtitle: 'Create a new link entry',
+                    icon: '🔗',
+                    handler: () => this.app.openAddLinkModal(null, query)
+                });
+            }
+
+            // 1. Filter default actions
+            const matchedActions = this.actions.filter(a =>
+                a.title.toLowerCase().includes(query.toLowerCase()) ||
+                a.subtitle.toLowerCase().includes(query.toLowerCase())
+            );
+
+            // 2. Search API
+            const serverResults = await api.search(query);
+
+            // Combine: Dynamic Actions -> Matched Default Actions -> Server Results
+            this.results = [...dynamicActions, ...matchedActions, ...serverResults];
             this.renderResults();
             this.dropdown.style.display = 'block';
         } catch (err) {
@@ -173,26 +228,32 @@ class SearchController {
         }
     }
 
-    renderResults() {
+    renderResults(isDefault = false) {
         if (!this.results || this.results.length === 0) {
             this.dropdown.innerHTML = '<div class="search-empty">No results found</div>';
             this.selectedIndex = -1;
             return;
         }
 
+        const actions = this.results.filter(r => r.type === 'action');
         const links = this.results.filter(r => r.type === 'link');
         const notes = this.results.filter(r => r.type === 'note');
 
         let html = '';
 
+        if (actions.length > 0) {
+            html += `<div class="search-section-title">Commands</div>`;
+            html += actions.map((item, index) => this.renderItem(item, index)).join('');
+        }
+
         if (links.length > 0) {
+            const startIndex = actions.length;
             html += '<div class="search-section-title">Links</div>';
-            html += links.map((item, index) => this.renderItem(item, index)).join('');
+            html += links.map((item, index) => this.renderItem(item, startIndex + index)).join('');
         }
 
         if (notes.length > 0) {
-            // Adjust index for continuous navigation
-            const startIndex = links.length;
+            const startIndex = actions.length + links.length;
             html += '<div class="search-section-title">Notes</div>';
             html += notes.map((item, index) => this.renderItem(item, startIndex + index)).join('');
         }
@@ -202,12 +263,13 @@ class SearchController {
         // Auto-select first item
         this.selectedIndex = 0;
         this.updateSelection();
+
         // Add click handlers
         this.dropdown.querySelectorAll('.search-result').forEach(el => {
             el.addEventListener('click', (e) => {
                 e.preventDefault();
                 const index = parseInt(el.dataset.index);
-                this.selectItem(index);
+                this.selectItem(this.results[index]);
             });
         });
     }
@@ -215,44 +277,28 @@ class SearchController {
     renderItem(item, index) {
         let iconHtml = item.icon;
         // Check if icon is a URL (image)
-        if (item.icon && (item.icon.match(/^(https?:\/\/|\/|www\.)/i) || item.icon.match(/\.(png|jpg|jpeg|gif|ico|svg|webp)$/i))) {
-            iconHtml = `<img class="search-result-icon-img" src="${item.icon}" alt="" style="width:20px;height:20px;border-radius:4px;object-fit:cover;" onerror="this.outerHTML='<span>${item.icon}</span>'">`;
-        } else {
-            // Wrap emoji/text in span for alignment
-            iconHtml = `<span>${item.icon}</span>`;
+        if (item.type !== 'action' && item.icon && (item.icon.match(/^(https?:\/\/|\/|www\.)/i) || item.icon.match(/\.(png|jpg|jpeg|gif|ico|svg|webp)$/i))) {
+            iconHtml = `<img class="search-result-icon-img" src="${item.icon}" alt="" style="width:20px;height:20px;border-radius:4px;object-fit:cover;" onerror="this.outerHTML='<span>📄</span>'">`;
+        } else if (!iconHtml) {
+            // Default icons
+            iconHtml = item.type === 'link' ? '🌐' : (item.type === 'note' ? '📝' : '⚡');
         }
 
+        if (!iconHtml.includes('<img')) {
+            iconHtml = `<span>${iconHtml}</span>`;
+        }
+
+
         return `
-            <div class="search-result" data-index="${index}" data-id="${item.id}" data-type="${item.type}">
+            <div class="search-result ${item.type === 'action' ? 'action-result' : ''}" data-index="${index}" data-id="${item.id}" data-type="${item.type}">
                 <div class="search-result-icon">${iconHtml}</div>
                 <div class="search-result-content">
                     <div class="search-result-title">${item.title}</div>
                     <div class="search-result-subtitle">${this.app.sanitizeContent(item.subtitle)}</div>
                 </div>
+                ${item.type === 'action' ? '<div class="action-hint">↵</div>' : ''}
             </div>
         `;
-    }
-
-    handleKeydown(e) {
-        if (!this.results.length) return;
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
-            this.updateSelection();
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.selectedIndex = Math.max(this.selectedIndex - 1, -1);
-            this.updateSelection();
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (this.selectedIndex >= 0) {
-                this.selectItem(this.selectedIndex);
-            }
-        } else if (e.key === 'Escape') {
-            this.closeDropdown();
-            this.input.blur();
-        }
     }
 
     updateSelection() {
@@ -267,11 +313,12 @@ class SearchController {
         });
     }
 
-    selectItem(index) {
-        const item = this.results[index];
+    selectItem(item) {
         if (!item) return;
 
-        if (item.type === 'link') {
+        if (item.type === 'action') {
+            item.handler();
+        } else if (item.type === 'link') {
             window.open(item.url, '_blank');
         } else if (item.type === 'note') {
             this.app.openNoteModal(item.id);
@@ -918,7 +965,7 @@ class App {
         this.initSidebar();
 
         // Initialize Search
-        this.searchController = new SearchController(this);
+        this.searchController = new CommandPaletteController(this);
 
         // Initialize Add Menu
         this.initAddMenu();
@@ -4053,7 +4100,7 @@ class App {
     }
 
     // New workflow for fullpage creation
-    openAddNoteFullpage(initialType = 'rich') {
+    openAddNoteFullpage(initialType = 'rich', initialContent = '') {
         this._isDirty = false;
         this._currentFullpageNoteId = null; // New note
         const dateStr = new Date().toLocaleString();
@@ -4134,6 +4181,7 @@ class App {
             }
         });
         this._fullpageQuill = quill;
+        if (initialContent) quill.setText(initialContent);
 
         let cm = null;
         this._fullpageCM = null;
@@ -4150,7 +4198,10 @@ class App {
                 indentUnit: 4
             });
             this._fullpageCM = cm;
-            cm.on('change', () => { this._isDirty = true; });
+            cm.on('change', () => {
+                this._isDirty = true;
+                if (window._fullpageAutoSave) window._fullpageAutoSave();
+            });
             setTimeout(() => cm.refresh(), 10);
         };
 
@@ -4185,9 +4236,18 @@ class App {
             this._isDirty = true;
         };
 
-        // Dirty tracking
-        quill.on('text-change', () => { this._isDirty = true; });
-        document.querySelector('.note-fullpage-header')?.addEventListener('input', () => { this._isDirty = true; });
+        // Initialize Auto-Save
+        window._fullpageAutoSave = this.setupAutoSave(null);
+
+        // Dirty tracking & Auto-save
+        quill.on('text-change', () => {
+            this._isDirty = true;
+            if (window._fullpageAutoSave) window._fullpageAutoSave();
+        });
+        document.querySelector('.note-fullpage-header')?.addEventListener('input', () => {
+            this._isDirty = true;
+            if (window._fullpageAutoSave) window._fullpageAutoSave();
+        });
 
         // Init Tag Input
         const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), []);
@@ -4408,7 +4468,10 @@ class App {
                 indentUnit: 4
             });
             this._fullpageCM = cm;
-            cm.on('change', () => { this._isDirty = true; });
+            cm.on('change', () => {
+                this._isDirty = true;
+                if (window._fullpageAutoSave) window._fullpageAutoSave();
+            });
             setTimeout(() => cm.refresh(), 10);
         };
 
@@ -4443,14 +4506,19 @@ class App {
             this._isDirty = true;
         };
 
-        // Track changes for dirty check
+        // Initialize Auto-Save
+        window._fullpageAutoSave = this.setupAutoSave(id);
+
+        // Track changes for dirty check & Auto-save
         quill.on('text-change', () => {
             this._isDirty = true;
+            if (window._fullpageAutoSave) window._fullpageAutoSave();
         });
 
         const header = document.querySelector('.note-fullpage-header');
         header?.addEventListener('input', () => {
             this._isDirty = true;
+            if (window._fullpageAutoSave) window._fullpageAutoSave();
         });
 
         // Initialize Tag Input
@@ -4481,8 +4549,40 @@ class App {
         document.addEventListener('keydown', this._noteFullpageSaveHandler);
     }
 
+    debounce(func, wait) {
+        let timeout;
+        return (...args) => {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    setupAutoSave(initialId) {
+        // Auto-save after 2 seconds of inactivity
+        return this.debounce(async () => {
+            if (!this._isDirty) return;
+
+            // Determine ID: use initialId, or if it was null, check if we've created one since
+            const currentId = initialId || this._currentFullpageNoteId;
+
+            // Visual indicator
+            const meta = document.querySelector('.note-fullpage-meta');
+            if (meta) {
+                const originalText = meta.textContent;
+                meta.textContent = 'Saving...';
+                // Restore after a bit if save is super fast/silent, but saveNoteFullpage will update it too
+            }
+
+            await this.saveNoteFullpage(currentId, true);
+        }, 2000);
+    }
+
     // Save note from fullpage edit
-    async saveNoteFullpage(id) {
+    async saveNoteFullpage(id, isAutoSave = false) {
         const title = document.getElementById('fullpage-note-title')?.value || 'Untitled';
         const typeBtn = document.querySelector('#fullpage-note-type-switch .editor-type-btn.active');
         const isCode = typeBtn?.dataset.type === 'code';
@@ -4492,7 +4592,7 @@ class App {
         const showAsWidget = document.getElementById('fullpage-note-widget')?.checked || false;
 
         const saveBtn = document.getElementById('fullpage-save-btn');
-        if (saveBtn) {
+        if (saveBtn && !isAutoSave) {
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<span class="spinner"></span> Saving...';
         }
@@ -4508,12 +4608,12 @@ class App {
                     code_language: codeLang,
                     tags: tags
                 });
-                this.showToast('Note updated');
+                if (!isAutoSave) this.showToast('Note updated');
             } else {
                 // CREATE new
                 let displayTitle = title;
                 if (!displayTitle || displayTitle === 'Untitled') {
-                    const text = this._fullpageQuill.getText().trim();
+                    const text = this._fullpageQuill ? this._fullpageQuill.getText().trim() : '';
                     displayTitle = text.substring(0, 30) + (text.length > 30 ? '...' : '');
                     if (!displayTitle) displayTitle = 'Untitled Note';
                 }
@@ -4525,7 +4625,7 @@ class App {
                     wx = x; wy = y;
                 }
 
-                await api.createNote({
+                const newNote = await api.createNote({
                     title: displayTitle,
                     content: content,
                     show_as_widget: showAsWidget,
@@ -4537,17 +4637,44 @@ class App {
                     widget_grid_w: 3,
                     widget_grid_h: 2
                 });
-                this.showToast('Note created');
-            }
-            this._isDirty = false; // Clear before closing
-            this.allNotes = await api.getNotes(); // Refresh local cache
-            this.closeNoteFullpage(true); // Force close
 
-            if (this.currentPage === 'notes') this.renderNotesPage();
-            else if (this.currentPage === 'dashboard') await this.initDashboard();
-            else this.refreshRecentWidgets('notes');
+                // CRITICAL: Update ID locally so subsequent auto-saves are UPDATES
+                this._currentFullpageNoteId = newNote.id;
+                id = newNote.id; // Switch to update mode for this instance
+
+                // Update Save Button onclick to point to new ID
+                if (saveBtn) {
+                    saveBtn.setAttribute('onclick', `app.saveNoteFullpage(${newNote.id})`);
+                }
+
+                if (!isAutoSave) this.showToast('Note created');
+            }
+
+            this._isDirty = false; // Clear dirty flag
+
+            // Update "Last updated" indicator
+            if (isAutoSave) {
+                const meta = document.querySelector('.note-fullpage-meta');
+                if (meta) meta.textContent = 'Saved ' + new Date().toLocaleTimeString();
+            }
+
+            if (!isAutoSave) {
+                this.allNotes = await api.getNotes(); // Refresh local cache
+                this.closeNoteFullpage(true); // Force close
+
+                if (this.currentPage === 'notes') this.renderNotesPage();
+                else if (this.currentPage === 'dashboard') await this.initDashboard();
+                else this.refreshRecentWidgets('notes');
+            }
+
         } catch (err) {
-            this.showToast('Failed to save note: ' + err.message, 'error');
+            console.error(err);
+            if (!isAutoSave) this.showToast('Failed to save note: ' + err.message, 'error');
+            else {
+                const meta = document.querySelector('.note-fullpage-meta');
+                if (meta) meta.textContent = 'Auto-save failed';
+            }
+
             if (saveBtn) {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
@@ -4567,6 +4694,7 @@ class App {
             overlay.classList.remove('active');
         }
         this._isDirty = false;
+        window._fullpageAutoSave = null;
 
         // Remove event handlers
         if (this._noteFullpageKeyHandler) {
