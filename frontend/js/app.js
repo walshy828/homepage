@@ -4182,7 +4182,10 @@ class App {
             }
         });
         this._fullpageQuill = quill;
-        if (initialContent) quill.setText(initialContent);
+        if (initialContent) {
+            quill.setText(initialContent);
+            this._isDirty = true; // Mark as dirty immediately for persistence
+        }
 
         let cm = null;
         this._fullpageCM = null;
@@ -4201,6 +4204,10 @@ class App {
             this._fullpageCM = cm;
             cm.on('change', () => {
                 this._isDirty = true;
+                const meta = document.querySelector('.note-fullpage-meta');
+                if (meta && !meta.innerHTML.includes('Saving...')) {
+                    meta.innerHTML = '<span class="status-dot warning"></span> Unsaved changes';
+                }
                 if (window._fullpageAutoSave) window._fullpageAutoSave();
             });
             setTimeout(() => cm.refresh(), 10);
@@ -4240,15 +4247,18 @@ class App {
         // Initialize Auto-Save
         window._fullpageAutoSave = this.setupAutoSave(null);
 
+        const updateStatus = () => {
+            this._isDirty = true;
+            const meta = document.querySelector('.note-fullpage-meta');
+            if (meta && !meta.textContent.includes('Saving...')) {
+                meta.innerHTML = '<span class="status-dot warning"></span> Unsaved changes';
+            }
+            if (window._fullpageAutoSave) window._fullpageAutoSave();
+        };
+
         // Dirty tracking & Auto-save
-        quill.on('text-change', () => {
-            this._isDirty = true;
-            if (window._fullpageAutoSave) window._fullpageAutoSave();
-        });
-        document.querySelector('.note-fullpage-header')?.addEventListener('input', () => {
-            this._isDirty = true;
-            if (window._fullpageAutoSave) window._fullpageAutoSave();
-        });
+        quill.on('text-change', () => updateStatus());
+        document.querySelector('.note-fullpage-header')?.addEventListener('input', () => updateStatus());
 
         // Init Tag Input
         const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), []);
@@ -4472,6 +4482,10 @@ class App {
             this._fullpageCM = cm;
             cm.on('change', () => {
                 this._isDirty = true;
+                const meta = document.querySelector('.note-fullpage-meta');
+                if (meta && !meta.innerHTML.includes('Saving...')) {
+                    meta.innerHTML = '<span class="status-dot warning"></span> Unsaved changes';
+                }
                 if (window._fullpageAutoSave) window._fullpageAutoSave();
             });
             setTimeout(() => cm.refresh(), 10);
@@ -4511,17 +4525,20 @@ class App {
         // Initialize Auto-Save
         window._fullpageAutoSave = this.setupAutoSave(id);
 
-        // Track changes for dirty check & Auto-save
-        quill.on('text-change', () => {
+        const updateStatus = () => {
             this._isDirty = true;
+            const meta = document.querySelector('.note-fullpage-meta');
+            if (meta && !meta.textContent.includes('Saving...')) {
+                meta.innerHTML = '<span class="status-dot warning"></span> Unsaved changes';
+            }
             if (window._fullpageAutoSave) window._fullpageAutoSave();
-        });
+        };
+
+        // Track changes for dirty check & Auto-save
+        quill.on('text-change', () => updateStatus());
 
         const header = document.querySelector('.note-fullpage-header');
-        header?.addEventListener('input', () => {
-            this._isDirty = true;
-            if (window._fullpageAutoSave) window._fullpageAutoSave();
-        });
+        header?.addEventListener('input', () => updateStatus());
 
         // Initialize Tag Input
         const tagInput = new TagInput(document.getElementById('fullpage-note-tags'), note.tags || []);
@@ -4568,16 +4585,9 @@ class App {
         return this.debounce(async () => {
             if (!this._isDirty) return;
 
-            // Determine ID: use initialId, or if it was null, check if we've created one since
             const currentId = initialId || this._currentFullpageNoteId;
-
-            // Visual indicator
             const meta = document.querySelector('.note-fullpage-meta');
-            if (meta) {
-                const originalText = meta.textContent;
-                meta.textContent = 'Saving...';
-                // Restore after a bit if save is super fast/silent, but saveNoteFullpage will update it too
-            }
+            if (meta) meta.innerHTML = '<span class="spinner-sm"></span> Saving...';
 
             await this.saveNoteFullpage(currentId, true);
         }, 2000);
@@ -4585,21 +4595,31 @@ class App {
 
     // Save note from fullpage edit
     async saveNoteFullpage(id, isAutoSave = false) {
-        const title = document.getElementById('fullpage-note-title')?.value || 'Untitled';
-        const typeBtn = document.querySelector('#fullpage-note-type-switch .editor-type-btn.active');
-        const isCode = typeBtn?.dataset.type === 'code';
-        const content = isCode ? this._fullpageCM?.getValue() : (this._fullpageQuill?.root.innerHTML || '');
-        const codeLang = isCode ? document.getElementById('fullpage-code-lang')?.value : null;
-        const tags = this._fullpageTagInput?.getTags() || [];
-        const showAsWidget = document.getElementById('fullpage-note-widget')?.checked || false;
-
-        const saveBtn = document.getElementById('fullpage-save-btn');
-        if (saveBtn && !isAutoSave) {
-            saveBtn.disabled = true;
-            saveBtn.innerHTML = '<span class="spinner"></span>';
-        }
+        if (this._isFullpageSaving && !isAutoSave) return;
+        this._isFullpageSaving = true;
 
         try {
+            const title = document.getElementById('fullpage-note-title')?.value || 'Untitled';
+            const typeBtn = document.querySelector('#fullpage-note-type-switch .editor-type-btn.active');
+            const isCode = typeBtn?.dataset.type === 'code';
+            const content = isCode ? this._fullpageCM?.getValue() : (this._fullpageQuill?.root.innerHTML || '');
+            const codeLang = isCode ? document.getElementById('fullpage-code-lang')?.value : null;
+            const tags = this._fullpageTagInput?.getTags() || [];
+            const showAsWidget = document.getElementById('fullpage-note-widget')?.checked || false;
+
+            const saveBtn = document.getElementById('fullpage-save-btn');
+
+            // If manual save and NO changes, just close
+            if (!isAutoSave && !this._isDirty && id) {
+                this.closeNoteFullpage(true);
+                return;
+            }
+
+            if (saveBtn && !isAutoSave) {
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<span class="spinner"></span>';
+            }
+
             if (id) {
                 // UPDATE existing
                 await api.updateNote(id, {
@@ -4657,7 +4677,9 @@ class App {
             // Update "Last updated" indicator
             if (isAutoSave) {
                 const meta = document.querySelector('.note-fullpage-meta');
-                if (meta) meta.textContent = 'Saved ' + new Date().toLocaleTimeString();
+                if (meta) {
+                    meta.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="3" style="margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                }
             }
 
             if (!isAutoSave) {
@@ -4671,6 +4693,7 @@ class App {
 
         } catch (err) {
             console.error(err);
+            const saveBtn = document.getElementById('fullpage-save-btn');
             if (!isAutoSave) this.showToast('Failed to save note: ' + err.message, 'error');
             else {
                 const meta = document.querySelector('.note-fullpage-meta');
@@ -4681,41 +4704,90 @@ class App {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Done';
             }
+        } finally {
+            this._isFullpageSaving = false;
         }
     }
 
     // Close fullpage note view
-    closeNoteFullpage(force = false) {
-        if (!force && this._isDirty) {
-            if (!confirm('You have unsaved changes. Are you sure you want to discard them?')) {
-                return;
+    // Close fullpage note view
+    async closeNoteFullpage(force = false) {
+        if (this._isFullpageClosing && !force) return;
+        this._isFullpageClosing = true;
+
+        try {
+            if (!force && this._isDirty) {
+                // Check if it's effectively empty (no meaningful content)
+                const title = document.getElementById('fullpage-note-title')?.value.trim() || '';
+                let content = '';
+
+                if (this._fullpageCM) {
+                    content = this._fullpageCM.getValue().trim();
+                } else if (this._fullpageQuill) {
+                    content = this._fullpageQuill.getText().trim();
+                }
+
+                const isNew = !this._currentFullpageNoteId;
+                const isEmpty = !title && !content;
+
+                if (isEmpty && isNew) {
+                    // New and empty? Just discard.
+                    this._isDirty = false;
+                } else {
+                    // Has content or is existing note? Auto-save it.
+                    const closeBtn = document.querySelector('.note-fullpage-back');
+                    if (closeBtn) {
+                        closeBtn.disabled = true;
+                        closeBtn.innerHTML = '<span class="spinner"></span> Saving...';
+                    }
+                    await this.saveNoteFullpage(this._currentFullpageNoteId);
+                    return; // saveNoteFullpage will call closeNoteFullpage(true)
+                }
             }
-        }
-        const overlay = document.getElementById('note-fullpage-overlay');
-        if (overlay) {
-            overlay.classList.remove('active');
-        }
-        this._isDirty = false;
-        window._fullpageAutoSave = null;
+            const overlay = document.getElementById('note-fullpage-overlay');
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
 
-        // Remove event handlers
-        if (this._noteFullpageKeyHandler) {
-            document.removeEventListener('keydown', this._noteFullpageKeyHandler);
-            this._noteFullpageKeyHandler = null;
-        }
-        if (this._noteFullpageSaveHandler) {
-            document.removeEventListener('keydown', this._noteFullpageSaveHandler);
-            this._noteFullpageSaveHandler = null;
-        }
-        if (this._noteFullpageEscHandler) {
-            document.removeEventListener('keydown', this._noteFullpageEscHandler);
-            this._noteFullpageEscHandler = null;
-        }
+            // Ensure UI is up to date (in case of auto-saves that didn't trigger a refresh)
+            if (this._currentFullpageNoteId) {
+                try {
+                    this.allNotes = await api.getNotes(); // Sync data
+                    if (this.currentPage === 'notes') this.renderNotesPage();
+                    else if (this.currentPage === 'dashboard') await this.initDashboard();
+                    else this.refreshRecentWidgets('notes');
+                } catch (e) {
+                    console.warn('Background refresh failed', e);
+                }
+            }
 
-        // Clear references
-        this._fullpageQuill = null;
-        this._fullpageTagInput = null;
-        this._currentFullpageNoteId = null;
+            this._isDirty = false;
+            window._fullpageAutoSave = null;
+
+            // Remove event handlers
+            if (this._noteFullpageKeyHandler) {
+                document.removeEventListener('keydown', this._noteFullpageKeyHandler);
+                this._noteFullpageKeyHandler = null;
+            }
+            if (this._noteFullpageSaveHandler) {
+                document.removeEventListener('keydown', this._noteFullpageSaveHandler);
+                this._noteFullpageSaveHandler = null;
+            }
+            if (this._noteFullpageEscHandler) {
+                document.removeEventListener('keydown', this._noteFullpageEscHandler);
+                this._noteFullpageEscHandler = null;
+            }
+
+            // Clear references
+            this._fullpageQuill = null;
+            this._fullpageTagInput = null;
+            this._currentFullpageNoteId = null;
+        } catch (e) {
+            console.error('Error closing fullpage editor:', e);
+        } finally {
+            this._isFullpageClosing = false;
+            this._isFullpageSaving = false;
+        }
     }
 
     // Delete note from fullpage view
