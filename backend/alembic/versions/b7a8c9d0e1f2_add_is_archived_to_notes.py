@@ -17,10 +17,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Handle the fact that the column might already exist if they ran a partial manual migration
-    # but based on the user logs, it doesn't exist.
-    op.add_column('notes', sa.Column('is_archived', sa.Boolean(), nullable=False, server_default=sa.text('false')))
+    # Check if column exists first to allow for idempotent migrations
+    conn = op.get_bind()
+    # Check if 'is_archived' exists in 'notes' table
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('notes')]
+    
+    if 'is_archived' not in columns:
+        print("Column 'is_archived' does not exist, adding it...")
+        op.add_column('notes', sa.Column('is_archived', sa.Boolean(), nullable=False, server_default=sa.text('false')))
+    else:
+        print("Column 'is_archived' already exists, skipping addition.")
 
 
 def downgrade() -> None:
-    op.drop_column('notes', 'is_archived')
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('notes')]
+    
+    if 'is_archived' in columns:
+        op.drop_column('notes', 'is_archived')
