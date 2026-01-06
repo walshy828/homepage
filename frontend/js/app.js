@@ -358,6 +358,8 @@ class App {
             showAssignedWidget: true
         };
         this.linkWidgetFilter = 'all';
+        this.notesFilter = { archived: false, timeRange: 'all' };
+        this.selectedNoteIds = new Set();
 
         // Browser navigation warning
         window.addEventListener('beforeunload', (e) => {
@@ -477,13 +479,23 @@ class App {
         }
 
         if (!api.token) { this.showAuth(); return; }
+
         // Show loading while checking auth
         document.getElementById('app').innerHTML = '<div class="auth-page"><div class="loading-state"><span class="spinner"></span><p>Loading dashboard...</p></div></div>';
+
         try {
             this.user = await api.getMe();
             await this.loadDashboard();
         } catch (e) {
-            this.showAuth();
+            console.error('Initial auth check failed:', e);
+            // Only redirect to auth if it's definitely an auth error (401)
+            // or if we have no user data. If it's a network error, maybe retry?
+            if (e.message?.includes('401') || !this.user) {
+                this.showAuth(e.message?.includes('401') ? null : 'Connection failed. Please sign in again.');
+            } else {
+                // Try to load anyway if we had a user, or show a retry button
+                this.showAuth('Could not connect to server. Please check your connection.');
+            }
         }
     }
 
@@ -1214,7 +1226,7 @@ class App {
     async showNotesPage() {
         this.currentPage = 'notes';
         this.updateNavigationState();
-        this.selectedNoteIds = new Set();
+        this.selectedNoteIds.clear(); // Clear on navigation
         this.notesFilter = { archived: false, timeRange: 'all' };
         await this.refreshNotes();
         this.activeNoteTag = null;

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    access_token_expire_minutes: int = 60 * 24 * 30  # 30 days
     
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/homepage.db"
