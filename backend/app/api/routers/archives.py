@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.core.database import get_db, async_session_maker
 from app.models.models import User, ArchivedPage
 from app.schemas.schemas import ArchivedPageCreate, ArchivedPageResponse
-from app.api.deps import get_current_user
+from app.api.dependencies import get_current_user
 from app.services.archiver import ContentArchiver
 
 router = APIRouter()

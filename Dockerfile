@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
+# Install Playwright browsers and dependencies
+RUN playwright install --with-deps chromium
+
+
 # Copy application code
 COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
