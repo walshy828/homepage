@@ -49,9 +49,14 @@ async def list_notes(
         query = query.where(Note.is_archived == is_archived)
     
     if start_date:
+        # PostgreSQL/asyncpg can be strict about offset-aware vs offset-naive datetimes
+        if start_date.tzinfo:
+            start_date = start_date.replace(tzinfo=None)
         query = query.where(Note.updated_at >= start_date)
     
     if end_date:
+        if end_date.tzinfo:
+            end_date = end_date.replace(tzinfo=None)
         query = query.where(Note.updated_at <= end_date)
     
     if show_as_widget is not None:
