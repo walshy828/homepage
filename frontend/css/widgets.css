@@ -805,8 +805,132 @@
     color: var(--color-text-tertiary);
 }
 
+
 .search-results {
     margin-top: var(--spacing-md);
+}
+
+/* ==================== Archives Page ==================== */
+.archives-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.archive-card {
+    background: var(--color-bg-widget);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.archive-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    border-color: var(--color-accent);
+}
+
+.archive-preview-wrapper {
+    position: relative;
+    height: 160px;
+    background: var(--color-bg-tertiary);
+    overflow: hidden;
+}
+
+.archive-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.archive-card:hover .archive-preview {
+    transform: scale(1.05);
+}
+
+.archive-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.archive-card:hover .archive-overlay {
+    opacity: 1;
+}
+
+.archive-info {
+    padding: 15px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.archive-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 8px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.archive-meta {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+    font-weight: 500;
+}
+
+.status-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: white;
+    z-index: 2;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-badge.pending {
+    background: #f59e0b;
+}
+
+.status-badge.failed {
+    background: #ef4444;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+    width: 100%;
+    grid-column: 1 / -1;
 }
 
 /* ==================== Clock Widget ==================== */
@@ -1272,40 +1396,6 @@
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.calendar-day.empty {
-    background: transparent;
-    cursor: default;
-}
-
-/* Adjust clock display when calendar is present */
-.clock-widget .calendar-container+.clock-display {
-    padding-bottom: 0;
-}
-
-/* Link Tags */
-.link-tags-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 2px;
-}
-
-.link-tag-pill {
-    font-size: 0.7rem;
-    color: var(--color-text-tertiary);
-    background: var(--color-bg-primary);
-    padding: 0 4px;
-    border-radius: 4px;
-    white-space: nowrap;
-    opacity: 0.8;
-}
-
-a.link-item:hover .link-tag-pill {
-    opacity: 1;
-    background: var(--color-accent-light);
-    color: var(--color-accent);
 }
 
 /* ============================================

@@ -420,3 +420,24 @@ class BulkNoteAction(BaseModel):
 class BulkDeleteAction(BaseModel):
     note_ids: List[int]
 
+
+# ============== Archived Page Schemas ==============
+
+class ArchivedPageCreate(BaseModel):
+    url: str
+    title: Optional[str] = None
+
+class ArchivedPageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int
+    owner_id: int
+    url: str
+    title: str
+    screenshot_path: Optional[str]
+    content_file_path: Optional[str]
+    status: str
+    summary: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+

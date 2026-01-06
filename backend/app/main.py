@@ -27,6 +27,7 @@ from app.api.routers import (
     notes_router,
     integrations_router,
     search_router,
+    archives_router,
 )
 
 
@@ -67,6 +68,7 @@ app.add_middleware(
 # Mount static directories
 app.mount("/css", StaticFiles(directory="static/css"), name="css")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
+app.mount("/data", StaticFiles(directory="data"), name="data")
 
 # API routers
 app.include_router(auth_router, prefix="/api")
@@ -76,6 +78,7 @@ app.include_router(links_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
+app.include_router(archives_router, prefix="/api/archives", tags=["archives"])
 
 
 @app.get("/health")

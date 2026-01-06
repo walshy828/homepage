@@ -791,10 +791,16 @@ class App {
         this.allLinks = await api.getLinks();
         this.allNotes = await api.getNotes();
 
+        // Initialize Controllers
+        if (window.ArchivesController) {
+            window.archivesController = new ArchivesController(this);
+        }
+
         // Handle URL Routing on Load
         const hash = window.location.hash;
         if (hash === '#links') this.currentPage = 'links';
         else if (hash === '#notes') this.currentPage = 'notes';
+        else if (hash === '#archives') this.currentPage = 'archives';
         else this.currentPage = 'dashboard';
 
         this.renderApp();
@@ -803,6 +809,8 @@ class App {
             this.showLinksPage();
         } else if (this.currentPage === 'notes') {
             this.renderNotesPage();
+        } else if (this.currentPage === 'archives' && window.archivesController) {
+            window.archivesController.load();
         } else {
             document.getElementById('main-content').innerHTML = '<div class="dashboard-container"><div class="grid-stack" id="grid"></div></div>';
             await this.initDashboard();
@@ -850,6 +858,10 @@ class App {
                                 <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
                                 <span class="sidebar-item-text">Notes</span>
                                 <span class="sidebar-item-shortcut">G→N</span>
+                            </div>
+                            <div class="sidebar-item ${this.currentPage === 'archives' ? 'active' : ''}" data-page="archives" onclick="window.archivesController.load(); app.closeMobileSidebar();" title="Reading List">
+                                <span class="sidebar-item-icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+                                <span class="sidebar-item-text">Reading List</span>
                             </div>
                         </div>
                         
@@ -3972,6 +3984,17 @@ class App {
 
         this.showModal('Add Link', `<form id="add-link-form">
             <div class="form-group"><label class="form-label">URL</label><input type="url" class="input" name="url" placeholder="https://example.com" required value="${initialUrl}"></div>
+            
+            <div class="form-group" style="background:var(--color-bg-tertiary); padding:10px; border-radius:6px; margin-bottom:15px; border:1px solid var(--color-border-light);">
+                 <label class="checkbox-label" style="display:flex;align-items:center;gap:10px;font-size:0.9rem;cursor:pointer;font-weight:500;">
+                     <input type="checkbox" id="add-link-archive-mode" style="width:auto;margin:0;accent-color:var(--color-primary);">
+                     <div style="display:flex;flex-direction:column;gap:2px;">
+                        <span>Save to Reading List</span>
+                        <span style="font-size:0.75rem;color:var(--color-text-tertiary);font-weight:400;">Capture screenshot and text for offline reading</span>
+                     </div>
+                 </label>
+            </div>
+
             <div class="form-group"><label class="form-label">Title</label><input class="input" name="title" id="link-title-input" placeholder="Optional - Auto-fetched"></div>
             <div class="form-group"><label class="form-label">Description</label><textarea class="input" name="description" id="link-desc-input" rows="2" placeholder="Optional - Auto-fetched preview text"></textarea></div>
             <input type="hidden" name="image_url" id="link-image-input">
@@ -4098,6 +4121,28 @@ class App {
         document.getElementById('add-link-form').addEventListener('submit', async e => {
             e.preventDefault();
             const form = e.target;
+
+            // Check archive mode
+            const isArchive = document.getElementById('add-link-archive-mode')?.checked;
+            if (isArchive) {
+                let url = form.url.value.trim();
+                if (url) {
+                    if (!url.match(/^https?:\/\//)) url = 'https://' + url;
+                    this.closeModal();
+
+                    if (window.archivesController) {
+                        try {
+                            this.showToast("Archiving page...", "info");
+                            await api.createArchive(url, form.title.value);
+                            this.showToast("Page added to reading list", "success");
+                            if (this.currentPage === 'archives') window.archivesController.load();
+                        } catch (e) {
+                            this.showToast("Archive failed: " + e.message, "error");
+                        }
+                    }
+                    return;
+                }
+            }
             const btn = form.querySelector('#add-link-submit');
             if (btn.disabled) return;
 

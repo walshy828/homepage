@@ -136,6 +136,11 @@ class API {
     }
     async search(query) { return this.request(`/search?q=${encodeURIComponent(query)}`); }
     async getWeather(location) { return this.request(`/integrations/weather/${encodeURIComponent(location)}`); }
+
+    // Archives / Read Later
+    async getArchives(skip = 0, limit = 50) { return this.request(`/archives?skip=${skip}&limit=${limit}`); }
+    async createArchive(url, title = null) { return this.request('/archives', { method: 'POST', body: JSON.stringify({ url, title }) }); }
+    async deleteArchive(id) { return this.request(`/archives/${id}`, { method: 'DELETE' }); }
 }
 
 const api = new API();

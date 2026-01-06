@@ -30,6 +30,7 @@ class User(Base):
     dashboards: Mapped[List["Dashboard"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     notes: Mapped[List["Note"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     links: Mapped[List["Link"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    archived_pages: Mapped[List["ArchivedPage"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
 
 
 class Dashboard(Base):
@@ -144,9 +145,29 @@ class Note(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="notes")
+
+
+class ArchivedPage(Base):
+    """Archived web page/read later item."""
+    __tablename__ = "archived_pages"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(255))
+    screenshot_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content_file_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, completed, failed
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    owner: Mapped["User"] = relationship(back_populates="archived_pages")
 
 
 class Integration(Base):
