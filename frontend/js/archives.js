@@ -1,7 +1,7 @@
 /**
  * Homepage Dashboard - Archives Controller
  */
-class ArchivesController {
+window.ArchivesController = class ArchivesController {
     constructor(app) {
         this.app = app;
         this.archives = [];

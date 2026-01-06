@@ -485,6 +485,12 @@ class App {
 
         try {
             this.user = await api.getMe();
+
+            // Initialize Controllers that don't depend on dashboard data
+            if (window.ArchivesController) {
+                window.archivesController = new ArchivesController(this);
+            }
+
             await this.loadDashboard();
         } catch (e) {
             console.error('Initial auth check failed:', e);
@@ -791,8 +797,8 @@ class App {
         this.allLinks = await api.getLinks();
         this.allNotes = await api.getNotes();
 
-        // Initialize Controllers
-        if (window.ArchivesController) {
+        // Ensure Controllers are initialized (usually done in init, but as fallback here)
+        if (window.ArchivesController && !window.archivesController) {
             window.archivesController = new ArchivesController(this);
         }
 
@@ -4128,7 +4134,7 @@ class App {
                 let url = form.url.value.trim();
                 if (url) {
                     if (!url.match(/^https?:\/\//)) url = 'https://' + url;
-                    this.closeModal();
+                    this.closeModal(true);
 
                     if (window.archivesController) {
                         try {
