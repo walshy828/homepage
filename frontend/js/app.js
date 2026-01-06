@@ -2602,6 +2602,11 @@ class App {
                     this.showNotesPage();
                     return;
                 }
+                if (sequence === 'ga') {
+                    e.preventDefault();
+                    if (window.archivesController) window.archivesController.load();
+                    return;
+                }
 
                 // Add sequences
                 if (sequence === 'al') {
@@ -3938,9 +3943,12 @@ class App {
             const text = item.querySelector('.sidebar-item-text')?.textContent.trim().toLowerCase();
 
             // Handle main pages
-            if (['dashboard', 'links', 'notes'].includes(text)) {
-                if (text === this.currentPage) item.classList.add('active');
-                else item.classList.remove('active');
+            if (['dashboard', 'links', 'notes', 'archives', 'reading list'].includes(text)) {
+                if (text === this.currentPage || (text === 'reading list' && this.currentPage === 'archives')) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
             }
 
             // Handle Edit Mode separately (it has its own specific entry in the sidebar)

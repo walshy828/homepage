@@ -13,14 +13,10 @@ window.ArchivesController = class ArchivesController {
 
     async load() {
         this.app.currentPage = 'archives'; // Update state
-
-        // Update URL hash
-        window.history.replaceState(null, null, '#archives');
+        window.location.hash = '#archives';
 
         // Update Sidebar active state
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        const navItem = document.querySelector('[data-page="archives"]');
-        if (navItem) navItem.classList.add('active');
+        this.app.updateNavigationState();
 
         // Render Skeleton
         const container = document.getElementById('main-content') || document.querySelector('.main-content');

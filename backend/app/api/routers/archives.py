@@ -9,9 +9,9 @@ from app.schemas.schemas import ArchivedPageCreate, ArchivedPageResponse
 from app.api.dependencies import get_current_user
 from app.services.archiver import ContentArchiver
 
-router = APIRouter()
+router = APIRouter(prefix="/archives", tags=["Archives"])
 
-@router.get("/", response_model=List[ArchivedPageResponse])
+@router.get("", response_model=List[ArchivedPageResponse])
 async def get_archives(
     skip: int = 0,
     limit: int = 50,

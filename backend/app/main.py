@@ -78,7 +78,7 @@ app.include_router(links_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
-app.include_router(archives_router, prefix="/api/archives", tags=["archives"])
+app.include_router(archives_router, prefix="/api")
 
 
 @app.get("/health")
