@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libxtst6 \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -g 999 docker || true \
+    && (groupadd -g 999 docker || groupadd docker) \
     && useradd -m -u 1000 -G docker appuser
 
 # Copy wheels from builder and install
