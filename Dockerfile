@@ -21,8 +21,18 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 
 # Install runtime dependencies
+# Install runtime dependencies including Chromium (for dependencies) and fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    chromium \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libnss3 \
+    libx11-xcb1 \
+    libxss1 \
+    libxtst6 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 999 docker || true \
     && useradd -m -u 1000 -G docker appuser
@@ -31,8 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /build/wheels /wheels
 RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
 
-# Install Playwright browsers and dependencies
-RUN playwright install --with-deps chromium
+# Install Playwright browsers (binary only, as deps are installed above)
+RUN playwright install chromium
 
 
 # Copy application code
