@@ -9,9 +9,9 @@ from app.schemas.schemas import ArchivedPageCreate, ArchivedPageResponse
 from app.api.dependencies import get_current_user
 from app.services.archiver import ContentArchiver
 
-router = APIRouter(prefix="/archives", tags=["Archives"])
+router = APIRouter(tags=["Archives"])
 
-@router.get("", response_model=List[ArchivedPageResponse])
+@router.get("/archives", response_model=List[ArchivedPageResponse])
 async def get_archives(
     skip: int = 0,
     limit: int = 50,
@@ -49,7 +49,7 @@ async def process_archive_task(archive_id: int, url: str):
             await session.rollback()
             print(f"Error updating archive status: {e}")
 
-@router.post("/", response_model=ArchivedPageResponse)
+@router.post("/archives", response_model=ArchivedPageResponse)
 async def create_archive(
     item: ArchivedPageCreate,
     background_tasks: BackgroundTasks,
@@ -70,7 +70,7 @@ async def create_archive(
     
     return db_item
 
-@router.delete("/{archive_id}")
+@router.delete("/archives/{archive_id}")
 async def delete_archive(
     archive_id: int,
     current_user: User = Depends(get_current_user),
