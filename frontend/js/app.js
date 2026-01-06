@@ -1242,84 +1242,109 @@ class App {
         this.updateNavButtons();
 
         const content = document.getElementById('main-content');
+        const selectedCount = this.selectedNoteIds?.size || 0;
+        const hasSelection = selectedCount > 0;
 
         content.innerHTML = `
-            <div class="notes-page">
+            <div class="notes-page ${hasSelection ? 'selection-mode' : ''}">
                 <div class="notes-header">
-                    <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
-                        <div style="display:flex; align-items:center; gap:var(--spacing-md)">
-                            <h2>Notes</h2>
+                    <!-- Row 1: Title, Filter Tabs, and Controls -->
+                    <div class="notes-header-row">
+                        <div class="notes-title-section">
+                            <h2>📒 Notes</h2>
                             <div class="filter-group">
-                                <button class="filter-btn ${!this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(false)">Active</button>
-                                <button class="filter-btn ${this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(true)">Archived</button>
+                                <button class="filter-btn ${!this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(false)">
+                                    <span>Active</span>
+                                </button>
+                                <button class="filter-btn ${this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(true)">
+                                    <span>📦 Archived</span>
+                                </button>
                             </div>
                         </div>
                         <div class="page-controls">
-                            <select class="sort-select" onchange="app.setNotesTimeRange(this.value)">
-                                <option value="all" ${this.notesFilter.timeRange === 'all' ? 'selected' : ''}>All Time</option>
-                                <option value="day" ${this.notesFilter.timeRange === 'day' ? 'selected' : ''}>Past 24h</option>
-                                <option value="week" ${this.notesFilter.timeRange === 'week' ? 'selected' : ''}>Past Week</option>
-                                <option value="month" ${this.notesFilter.timeRange === 'month' ? 'selected' : ''}>Past Month</option>
+                            <select class="sort-select" onchange="app.setNotesTimeRange(this.value)" title="Filter by time">
+                                <option value="all" ${this.notesFilter.timeRange === 'all' ? 'selected' : ''}>📅 All Time</option>
+                                <option value="day" ${this.notesFilter.timeRange === 'day' ? 'selected' : ''}>Today</option>
+                                <option value="week" ${this.notesFilter.timeRange === 'week' ? 'selected' : ''}>This Week</option>
+                                <option value="month" ${this.notesFilter.timeRange === 'month' ? 'selected' : ''}>This Month</option>
                             </select>
-                            <select class="sort-select" onchange="app.setSortMode(this.value)">
-                                <option value="updated_desc" ${this.sortMode === 'updated_desc' ? 'selected' : ''}>Newest</option>
-                                <option value="updated_asc" ${this.sortMode === 'updated_asc' ? 'selected' : ''}>Oldest</option>
-                                <option value="title_asc" ${this.sortMode === 'title_asc' ? 'selected' : ''}>Title A-Z</option>
-                                <option value="title_desc" ${this.sortMode === 'title_desc' ? 'selected' : ''}>Title Z-A</option>
+                            <select class="sort-select" onchange="app.setSortMode(this.value)" title="Sort notes">
+                                <option value="updated_desc" ${this.sortMode === 'updated_desc' ? 'selected' : ''}>Newest First</option>
+                                <option value="updated_asc" ${this.sortMode === 'updated_asc' ? 'selected' : ''}>Oldest First</option>
+                                <option value="title_asc" ${this.sortMode === 'title_asc' ? 'selected' : ''}>A → Z</option>
+                                <option value="title_desc" ${this.sortMode === 'title_desc' ? 'selected' : ''}>Z → A</option>
                             </select>
                             <div class="view-toggle">
                                 <button class="view-toggle-btn ${this.viewMode === 'grid' ? 'active' : ''}" onclick="app.toggleViewMode('grid')" title="Grid View">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                                 </button>
                                 <button class="view-toggle-btn ${this.viewMode === 'list' ? 'active' : ''}" onclick="app.toggleViewMode('list')" title="List View">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
                                 </button>
                             </div>
-                             <button class="btn btn-primary" onclick="app.openAddNoteModal()">+ New Note</button>
+                            <button class="btn btn-primary" onclick="app.openAddNoteModal()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                New Note
+                            </button>
                         </div>
                     </div>
-                    <div id="notes-tag-cloud" style="width:100%; margin: var(--spacing-sm) 0;"></div>
-                    <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:var(--spacing-md)">
-                        <div class="selection-control" style="display:flex; align-items:center; gap:8px;">
-                            <div class="note-checkbox ${this.isAllNotesSelected() ? 'checked' : ''}" onclick="app.toggleSelectAllNotes()">
+
+                    <!-- Tag Cloud -->
+                    <div id="notes-tag-cloud"></div>
+
+                    <!-- Row 2: Selection Control and Search -->
+                    <div class="notes-header-row selection-row">
+                        <div class="selection-control" onclick="app.toggleSelectAllNotes()">
+                            <div class="note-checkbox ${this.isAllNotesSelected() ? 'checked' : ''}">
                                 ${this.isAllNotesSelected() ? '✓' : ''}
                             </div>
-                            <span style="font-size: 13px; color: var(--color-text-secondary); cursor: pointer;" onclick="app.toggleSelectAllNotes()">Select All</span>
+                            <span class="selection-control-label">
+                                ${hasSelection ? `${selectedCount} selected` : 'Select all'}
+                            </span>
                         </div>
-                        <input type="text" class="input" id="notes-search" placeholder="Search notes..." style="width:250px;">
+                        <input type="text" class="notes-search-input" id="notes-search" placeholder="Search notes..." value="">
                     </div>
                 </div>
+
+                <!-- Notes Grid/List -->
                 <div id="notes-grid" class="${this.viewMode === 'grid' ? 'notes-grid' : 'list-view-container'}"></div>
                 
-                <div class="bulk-actions-toolbar" id="bulk-actions-toolbar">
-                    <div class="bulk-info"><span id="selected-count">0</span> selected</div>
+                <!-- Floating Bulk Actions Toolbar -->
+                <div class="bulk-actions-toolbar ${hasSelection ? 'active' : ''}" id="bulk-actions-toolbar">
+                    <div class="bulk-info">
+                        <span class="count" id="selected-count">${selectedCount}</span>
+                        <span>selected</span>
+                    </div>
                     <div class="bulk-btns">
-                        <button class="btn btn-ghost" onclick="app.bulkArchiveNotes()">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
-                            ${this.notesFilter.archived ? 'Unarchive' : 'Archive'}
+                        <button class="btn btn-archive" onclick="app.bulkArchiveNotes()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
+                            ${this.notesFilter.archived ? 'Restore' : 'Archive'}
                         </button>
-                        <button class="btn btn-ghost" onclick="app.bulkDeleteNotes()">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        <button class="btn btn-delete" onclick="app.bulkDeleteNotes()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                             Delete
                         </button>
-                        <button class="btn btn-ghost" onclick="app.clearSelection()">Cancel</button>
+                        <button class="btn btn-cancel" onclick="app.clearSelection()">
+                            Cancel
+                        </button>
                     </div>
                 </div>
             </div>`;
 
+        // Set up search listener
         document.getElementById('notes-search').addEventListener('input', e => this.filterNotes(e.target.value));
 
         // Render Tag Cloud
         this.renderTagCloud(document.getElementById('notes-tag-cloud'), this.allNotes, 'notes');
 
-        // Initial render
+        // Initial render of notes
         this.filterNotes('');
     }
 
     renderNoteListItem(note) {
         const age = this.timeAgo(note.updated_at);
         const tagsHtml = (note.tags && note.tags.length)
-            ? `<div style="display:flex; gap:4px;">${note.tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`
+            ? `<div class="tag-list" style="display:flex; gap:4px; margin-top:4px;">${note.tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`
             : '';
         const isSelected = this.selectedNoteIds.has(note.id);
 
@@ -1335,22 +1360,24 @@ class App {
             </div>
             <div class="list-item-content" onclick="event.stopPropagation(); app.openNoteModal(${note.id})">
                 <div class="list-item-title">
-                    ${note.is_archived ? '<span class="archived-badge">Archived</span> ' : ''}
+                    ${note.is_archived ? '<span class="archived-badge">📦 Archived</span>' : ''}
                     ${note.title}
                 </div>
                 <div class="list-item-meta">
-                   <span title="Created: ${note.created_at ? new Date(note.created_at).toLocaleString() : ''} | Updated: ${note.updated_at ? new Date(note.updated_at).toLocaleString() : ''}">${age}</span>
+                   <span class="note-age" title="Updated: ${new Date(note.updated_at).toLocaleString()}">${age}</span>
                    ${tagsHtml}
                 </div>
             </div>
             <div class="list-item-actions">
-                <button class="btn-icon" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Unarchive' : 'Archive'}">
-                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
+                <button class="note-visibility-btn" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Restore' : 'Archive'}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">
-                   ${note.show_as_widget ? '★' : '☆'}
+                <button class="note-visibility-btn ${note.show_as_widget ? 'visible' : ''}" onclick="event.stopPropagation(); app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">
+                    ${note.show_as_widget ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); app.confirmDeleteNote(${note.id})">🗑</button>
+                <button class="note-visibility-btn" onclick="event.stopPropagation(); app.confirmDeleteNote(${note.id})" title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                </button>
             </div>
         </div>`;
     }
@@ -1396,13 +1423,41 @@ class App {
     updateBulkToolbar() {
         const toolbar = document.getElementById('bulk-actions-toolbar');
         const count = document.getElementById('selected-count');
+        const pageContainer = document.querySelector('.notes-page');
         if (!toolbar || !count) return;
 
-        if (this.selectedNoteIds.size > 0) {
+        const selectedCount = this.selectedNoteIds.size;
+        if (selectedCount > 0) {
             toolbar.classList.add('active');
-            count.textContent = this.selectedNoteIds.size;
+            pageContainer?.classList.add('selection-mode');
+            count.textContent = selectedCount;
+
+            // Update labels in the selection row
+            const label = document.querySelector('.selection-control-label');
+            if (label) label.textContent = `${selectedCount} selected`;
+
+            const selectAllCheck = document.querySelector('.selection-control .note-checkbox');
+            if (selectAllCheck) {
+                if (this.isAllNotesSelected()) {
+                    selectAllCheck.classList.add('checked');
+                    selectAllCheck.textContent = '✓';
+                } else {
+                    selectAllCheck.classList.remove('checked');
+                    selectAllCheck.textContent = '';
+                }
+            }
         } else {
             toolbar.classList.remove('active');
+            pageContainer?.classList.remove('selection-mode');
+
+            const label = document.querySelector('.selection-control-label');
+            if (label) label.textContent = 'Select all';
+
+            const selectAllCheck = document.querySelector('.selection-control .note-checkbox');
+            if (selectAllCheck) {
+                selectAllCheck.classList.remove('checked');
+                selectAllCheck.textContent = '';
+            }
         }
     }
 
@@ -1488,6 +1543,31 @@ class App {
             filtered = this.sortItems(filtered, this.sortMode);
         }
 
+        // Empty state
+        if (filtered.length === 0) {
+            const emptyMessage = this.notesFilter.archived
+                ? { title: 'No archived notes', desc: 'Notes you archive will appear here' }
+                : term
+                    ? { title: 'No results found', desc: `No notes match "${term}"` }
+                    : { title: 'No notes yet', desc: 'Create your first note to get started' };
+
+            grid.className = 'notes-grid';
+            grid.innerHTML = `
+                <div class="notes-empty-state" style="grid-column: 1 / -1;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    <h3>${emptyMessage.title}</h3>
+                    <p>${emptyMessage.desc}</p>
+                    ${!this.notesFilter.archived && !term ? '<button class="btn btn-primary" onclick="app.openAddNoteModal()">+ Create Note</button>' : ''}
+                </div>`;
+            return;
+        }
+
         if (this.viewMode === 'grid') {
             grid.className = 'notes-grid';
             grid.innerHTML = filtered.map(n => this.renderNoteCard(n)).join('');
@@ -1495,6 +1575,9 @@ class App {
             grid.className = 'list-view-container';
             grid.innerHTML = filtered.map(n => this.renderNoteListItem(n)).join('');
         }
+
+        // Update bulk toolbar
+        this.updateBulkToolbar();
 
         // Highlight all code blocks if hljs is available
         if (window.hljs) {
@@ -4227,7 +4310,7 @@ class App {
     renderNoteCard(note) {
         const age = this.timeAgo(note.updated_at);
         const tagsHtml = (note.tags && note.tags.length)
-            ? `<div class="link-tags-list" style="margin-bottom:var(--spacing-xs)">${note.tags.map(t => `<span class="link-tag-pill">${t}</span>`).join('')}</div>`
+            ? `<div class="tag-list" style="margin-bottom:var(--spacing-xs); display:flex; flex-wrap:wrap; gap:4px;">${note.tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`
             : '';
         const safeContent = this.sanitizeContent(note.content);
         const isSelected = this.selectedNoteIds.has(note.id);
@@ -4239,12 +4322,12 @@ class App {
                 </div>
             </div>
             <div class="note-card-header">
-                <div style="display:flex; flex-direction:column; gap:2px;">
-                    ${note.is_archived ? '<span class="archived-badge">Archived</span>' : ''}
-                    <h3>${note.title}</h3>
+                <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:0;">
+                    ${note.is_archived ? '<span class="archived-badge">📦 Archived</span>' : ''}
+                    <h3 title="${note.title}">${note.title}</h3>
                 </div>
                 <div class="note-card-actions">
-                    <button class="note-visibility-btn" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Unarchive' : 'Archive'}">
+                    <button class="note-visibility-btn" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Restore' : 'Archive'}">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
                     </button>
                     <button class="note-visibility-btn ${note.show_as_widget ? 'visible' : ''}" onclick="event.stopPropagation(); app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">

@@ -9,7 +9,7 @@ async def migrate():
             # Check if column exists first (SQLite specific check for safety)
             # For PostgreSQL/Generic, wrapping in try/except is effective
             print("Checking/Adding 'is_archived' column to 'notes' table...")
-            await conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
             await conn.commit()
             print("Successfully added 'is_archived' column.")
         except Exception as e:
