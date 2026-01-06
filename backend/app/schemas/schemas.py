@@ -209,6 +209,7 @@ class NoteCreate(BaseModel):
     category: str = "general"
     color: str = "default"
     is_pinned: bool = False
+    is_archived: bool = False
     tags: List[str] = Field(default_factory=list)
     show_as_widget: bool = False
     widget_grid_x: Optional[int] = None
@@ -225,6 +226,7 @@ class NoteUpdate(BaseModel):
     category: Optional[str] = None
     color: Optional[str] = None
     is_pinned: Optional[bool] = None
+    is_archived: Optional[bool] = None
     tags: Optional[List[str]] = None
     show_as_widget: Optional[bool] = None
     widget_grid_x: Optional[int] = None
@@ -244,6 +246,7 @@ class NoteResponse(BaseModel):
     code_language: Optional[str]
     category: str
     is_pinned: bool
+    is_archived: bool
     tags: List[str]
     color: str
     show_as_widget: bool
@@ -402,4 +405,18 @@ class CategorizeLinkResponse(BaseModel):
 
 class SuggestTagsResponse(BaseModel):
     tags: List[str]
+
+
+# ============== Bulk Action Schemas ==============
+
+class BulkNoteAction(BaseModel):
+    note_ids: List[int]
+    is_archived: Optional[bool] = None
+    category: Optional[str] = None
+    color: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class BulkDeleteAction(BaseModel):
+    note_ids: List[int]
 

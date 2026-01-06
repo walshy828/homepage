@@ -1214,9 +1214,26 @@ class App {
     async showNotesPage() {
         this.currentPage = 'notes';
         this.updateNavigationState();
-        this.allNotes = await api.getNotes();
-        this.activeNoteTag = null; // Reset filter on enter
+        this.selectedNoteIds = new Set();
+        this.notesFilter = { archived: false, timeRange: 'all' };
+        await this.refreshNotes();
+        this.activeNoteTag = null;
         this.renderNotesPage();
+    }
+
+    async refreshNotes() {
+        const params = {};
+        if (this.notesFilter.archived) params.is_archived = true;
+        if (this.notesFilter.timeRange !== 'all') {
+            const now = new Date();
+            let start;
+            if (this.notesFilter.timeRange === 'day') start = new Date(now.setDate(now.getDate() - 1));
+            else if (this.notesFilter.timeRange === 'week') start = new Date(now.setDate(now.getDate() - 7));
+            else if (this.notesFilter.timeRange === 'month') start = new Date(now.setMonth(now.getMonth() - 1));
+            if (start) params.start_date = start.toISOString();
+        }
+        this.allNotes = await api.getNotes(params);
+        if (this.currentPage === 'notes') this.filterNotes(document.getElementById('notes-search')?.value || '');
     }
 
     renderNotesPage() {
@@ -1226,14 +1243,24 @@ class App {
 
         const content = document.getElementById('main-content');
 
-
-
         content.innerHTML = `
             <div class="notes-page">
-                <div class="notes-header" style="flex-direction:column; align-items:flex-start; gap:var(--spacing-md);">
+                <div class="notes-header">
                     <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
-                        <h2>All Notes</h2>
+                        <div style="display:flex; align-items:center; gap:var(--spacing-md)">
+                            <h2>Notes</h2>
+                            <div class="filter-group">
+                                <button class="filter-btn ${!this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(false)">Active</button>
+                                <button class="filter-btn ${this.notesFilter.archived ? 'active' : ''}" onclick="app.setNotesArchivedFilter(true)">Archived</button>
+                            </div>
+                        </div>
                         <div class="page-controls">
+                            <select class="sort-select" onchange="app.setNotesTimeRange(this.value)">
+                                <option value="all" ${this.notesFilter.timeRange === 'all' ? 'selected' : ''}>All Time</option>
+                                <option value="day" ${this.notesFilter.timeRange === 'day' ? 'selected' : ''}>Past 24h</option>
+                                <option value="week" ${this.notesFilter.timeRange === 'week' ? 'selected' : ''}>Past Week</option>
+                                <option value="month" ${this.notesFilter.timeRange === 'month' ? 'selected' : ''}>Past Month</option>
+                            </select>
                             <select class="sort-select" onchange="app.setSortMode(this.value)">
                                 <option value="updated_desc" ${this.sortMode === 'updated_desc' ? 'selected' : ''}>Newest</option>
                                 <option value="updated_asc" ${this.sortMode === 'updated_asc' ? 'selected' : ''}>Oldest</option>
@@ -1251,13 +1278,33 @@ class App {
                              <button class="btn btn-primary" onclick="app.openAddNoteModal()">+ New Note</button>
                         </div>
                     </div>
-                    <div id="notes-tag-cloud" style="width:100%; margin-bottom: var(--spacing-sm);"></div>
+                    <div id="notes-tag-cloud" style="width:100%; margin: var(--spacing-sm) 0;"></div>
                     <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:var(--spacing-md)">
-                        <div style="flex:1"></div>
-                        <input type="text" class="input" id="notes-search" placeholder="Search notes..." style="width:200px;">
+                        <div class="selection-control" style="display:flex; align-items:center; gap:8px;">
+                            <div class="note-checkbox ${this.isAllNotesSelected() ? 'checked' : ''}" onclick="app.toggleSelectAllNotes()">
+                                ${this.isAllNotesSelected() ? '✓' : ''}
+                            </div>
+                            <span style="font-size: 13px; color: var(--color-text-secondary); cursor: pointer;" onclick="app.toggleSelectAllNotes()">Select All</span>
+                        </div>
+                        <input type="text" class="input" id="notes-search" placeholder="Search notes..." style="width:250px;">
                     </div>
                 </div>
                 <div id="notes-grid" class="${this.viewMode === 'grid' ? 'notes-grid' : 'list-view-container'}"></div>
+                
+                <div class="bulk-actions-toolbar" id="bulk-actions-toolbar">
+                    <div class="bulk-info"><span id="selected-count">0</span> selected</div>
+                    <div class="bulk-btns">
+                        <button class="btn btn-ghost" onclick="app.bulkArchiveNotes()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
+                            ${this.notesFilter.archived ? 'Unarchive' : 'Archive'}
+                        </button>
+                        <button class="btn btn-ghost" onclick="app.bulkDeleteNotes()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                            Delete
+                        </button>
+                        <button class="btn btn-ghost" onclick="app.clearSelection()">Cancel</button>
+                    </div>
+                </div>
             </div>`;
 
         document.getElementById('notes-search').addEventListener('input', e => this.filterNotes(e.target.value));
@@ -1274,27 +1321,141 @@ class App {
         const tagsHtml = (note.tags && note.tags.length)
             ? `<div style="display:flex; gap:4px;">${note.tags.map(t => `<span class="tag-pill-sm">${t}</span>`).join('')}</div>`
             : '';
+        const isSelected = this.selectedNoteIds.has(note.id);
 
         return `
-        <div class="list-item" onclick="app.openNoteModal(${note.id})">
+        <div class="list-item ${isSelected ? 'selected' : ''} ${note.is_archived ? 'archived' : ''}" onclick="app.toggleNoteSelection(${note.id}, event)">
+            <div class="note-selection-container">
+                <div class="note-checkbox ${isSelected ? 'checked' : ''}">
+                    ${isSelected ? '✓' : ''}
+                </div>
+            </div>
             <div class="list-item-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
             </div>
-            <div class="list-item-content">
-                <div class="list-item-title">${note.title}</div>
+            <div class="list-item-content" onclick="event.stopPropagation(); app.openNoteModal(${note.id})">
+                <div class="list-item-title">
+                    ${note.is_archived ? '<span class="archived-badge">Archived</span> ' : ''}
+                    ${note.title}
+                </div>
                 <div class="list-item-meta">
                    <span title="Created: ${note.created_at ? new Date(note.created_at).toLocaleString() : ''} | Updated: ${note.updated_at ? new Date(note.updated_at).toLocaleString() : ''}">${age}</span>
                    ${tagsHtml}
                 </div>
             </div>
             <div class="list-item-actions">
+                <button class="btn-icon" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Unarchive' : 'Archive'}">
+                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
+                </button>
                 <button class="btn-icon" onclick="event.stopPropagation(); app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">
                    ${note.show_as_widget ? '★' : '☆'}
                 </button>
-                <button class="btn-icon" onclick="event.stopPropagation(); app.editNote(${note.id})">✎</button>
                 <button class="btn-icon" onclick="event.stopPropagation(); app.confirmDeleteNote(${note.id})">🗑</button>
             </div>
         </div>`;
+    }
+
+    setNotesArchivedFilter(isArchived) {
+        this.notesFilter.archived = isArchived;
+        this.selectedNoteIds.clear();
+        this.refreshNotes();
+        this.renderNotesPage(); // Re-render header state
+    }
+
+    setNotesTimeRange(range) {
+        this.notesFilter.timeRange = range;
+        this.refreshNotes();
+    }
+
+    toggleNoteSelection(id, event) {
+        // If clicking on text/actions, don't toggle selection unless it's a list item click
+        if (event && (event.target.closest('.list-item-actions') || event.target.closest('.btn-icon'))) return;
+
+        if (this.selectedNoteIds.has(id)) this.selectedNoteIds.delete(id);
+        else this.selectedNoteIds.add(id);
+
+        this.updateBulkToolbar();
+        this.filterNotes(document.getElementById('notes-search')?.value || '');
+    }
+
+    toggleSelectAllNotes() {
+        const anySelected = this.selectedNoteIds.size > 0;
+        if (anySelected && this.isAllNotesSelected()) {
+            this.selectedNoteIds.clear();
+        } else {
+            this.allNotes.forEach(n => this.selectedNoteIds.add(n.id));
+        }
+        this.updateBulkToolbar();
+        this.renderNotesPage(); // Re-render to update "Select All" check
+    }
+
+    isAllNotesSelected() {
+        return this.allNotes.length > 0 && this.selectedNoteIds.size === this.allNotes.length;
+    }
+
+    updateBulkToolbar() {
+        const toolbar = document.getElementById('bulk-actions-toolbar');
+        const count = document.getElementById('selected-count');
+        if (!toolbar || !count) return;
+
+        if (this.selectedNoteIds.size > 0) {
+            toolbar.classList.add('active');
+            count.textContent = this.selectedNoteIds.size;
+        } else {
+            toolbar.classList.remove('active');
+        }
+    }
+
+    clearSelection() {
+        this.selectedNoteIds.clear();
+        this.updateBulkToolbar();
+        this.filterNotes(document.getElementById('notes-search')?.value || '');
+        this.renderNotesPage();
+    }
+
+    async bulkArchiveNotes() {
+        if (this.selectedNoteIds.size === 0) return;
+        const noteIds = Array.from(this.selectedNoteIds);
+        const shouldArchive = !this.notesFilter.archived;
+
+        try {
+            await api.bulkUpdateNotes({ note_ids: noteIds, is_archived: shouldArchive });
+            this.showToast(`${noteIds.length} notes ${shouldArchive ? 'archived' : 'unarchived'}`);
+            this.selectedNoteIds.clear();
+            await this.refreshNotes();
+        } catch (e) {
+            this.showToast('Failed to perform bulk action', 'error');
+        }
+    }
+
+    async bulkDeleteNotes() {
+        if (this.selectedNoteIds.size === 0) return;
+        if (!confirm(`Delete ${this.selectedNoteIds.size} notes permanently?`)) return;
+
+        const noteIds = Array.from(this.selectedNoteIds);
+        try {
+            await api.bulkDeleteNotes({ note_ids: noteIds });
+            this.showToast(`${noteIds.length} notes deleted`);
+            this.selectedNoteIds.clear();
+            await this.refreshNotes();
+        } catch (e) {
+            this.showToast('Failed to delete notes', 'error');
+        }
+    }
+
+    async toggleNoteArchive(id) {
+        const note = this.allNotes.find(n => n.id === id);
+        if (!note) return;
+
+        try {
+            if (note.is_archived) await api.unarchiveNote(id);
+            else await api.archiveNote(id);
+
+            this.showToast(note.is_archived ? 'Note restored' : 'Note archived');
+            await this.refreshNotes();
+        } catch (e) {
+            this.showToast('Action failed', 'error');
+        }
     }
 
 
@@ -4069,18 +4230,29 @@ class App {
             ? `<div class="link-tags-list" style="margin-bottom:var(--spacing-xs)">${note.tags.map(t => `<span class="link-tag-pill">${t}</span>`).join('')}</div>`
             : '';
         const safeContent = this.sanitizeContent(note.content);
+        const isSelected = this.selectedNoteIds.has(note.id);
 
-        return `<div class="note-card ${note.show_as_widget ? 'on-dashboard' : ''}" data-id="${note.id}">
-            <div class="note-card-header">
-                <h3>${note.title}</h3>
-                <div class="note-card-actions">
-                    <button class="note-visibility-btn ${note.show_as_widget ? 'visible' : ''}" onclick="app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">
-                        ${note.show_as_widget ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}
-                    </button>
-                    ${note.category ? `<span class="badge">${note.category}</span>` : ''}
+        return `<div class="note-card ${note.show_as_widget ? 'on-dashboard' : ''} ${isSelected ? 'selected' : ''} ${note.is_archived ? 'archived' : ''}" data-id="${note.id}" onclick="app.toggleNoteSelection(${note.id}, event)">
+            <div class="note-selection-container">
+                <div class="note-checkbox ${isSelected ? 'checked' : ''}">
+                    ${isSelected ? '✓' : ''}
                 </div>
             </div>
-            <div class="note-card-content" onclick="app.openNoteModal(${note.id})">
+            <div class="note-card-header">
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    ${note.is_archived ? '<span class="archived-badge">Archived</span>' : ''}
+                    <h3>${note.title}</h3>
+                </div>
+                <div class="note-card-actions">
+                    <button class="note-visibility-btn" onclick="event.stopPropagation(); app.toggleNoteArchive(${note.id})" title="${note.is_archived ? 'Unarchive' : 'Archive'}">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path></svg>
+                    </button>
+                    <button class="note-visibility-btn ${note.show_as_widget ? 'visible' : ''}" onclick="event.stopPropagation(); app.toggleNoteWidget(${note.id})" title="${note.show_as_widget ? 'Hide from dashboard' : 'Show on dashboard'}">
+                        ${note.show_as_widget ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}
+                    </button>
+                </div>
+            </div>
+            <div class="note-card-content" onclick="event.stopPropagation(); app.openNoteModal(${note.id})">
                 ${tagsHtml}
                 <div class="note-content-preview">
                     ${note.is_code ? `<pre class="note-code-preview language-${note.code_language || 'plaintext'}"><code>${safeContent}</code></pre>` : safeContent}
@@ -4088,6 +4260,7 @@ class App {
             </div>
             <div class="note-card-meta">
                 <span class="note-age" title="Updated ${new Date(note.updated_at).toLocaleString()}">${age}</span>
+                ${note.category ? `<span class="badge" style="margin-left:auto">${note.category}</span>` : ''}
             </div>
         </div>`;
     }
@@ -4794,7 +4967,7 @@ class App {
     async confirmDeleteNoteFullpage(id) {
         if (confirm('Delete this note?')) {
             await api.deleteNote(id);
-            this.allNotes = await api.getNotes();
+            await this.refreshNotes();
             this.closeNoteFullpage();
             this.showToast('Note deleted');
             if (this.currentPage === 'notes') this.renderNotesPage();
@@ -4808,7 +4981,7 @@ class App {
     async confirmDeleteNote(id) {
         if (confirm('Delete this note?')) {
             await api.deleteNote(id);
-            this.allNotes = await api.getNotes();
+            await this.refreshNotes();
             this.closeModal();
             this.closeNoteFullpage();
             this.showToast('Note deleted');

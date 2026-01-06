@@ -122,6 +122,10 @@ class API {
     async createNote(data) { return this.request('/notes', { method: 'POST', body: JSON.stringify(data) }); }
     async updateNote(id, data) { return this.request(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
     async deleteNote(id) { return this.request(`/notes/${id}`, { method: 'DELETE' }); }
+    async archiveNote(id) { return this.request(`/notes/${id}/archive`, { method: 'PATCH' }); }
+    async unarchiveNote(id) { return this.request(`/notes/${id}/unarchive`, { method: 'PATCH' }); }
+    async bulkUpdateNotes(data) { return this.request('/notes/bulk-update', { method: 'POST', body: JSON.stringify(data) }); }
+    async bulkDeleteNotes(data) { return this.request('/notes/bulk-delete', { method: 'POST', body: JSON.stringify(data) }); }
     async viewNote(id) { return this.request(`/notes/${id}/view`, { method: 'POST' }); }
     async getIntegrationStatus() { return this.request('/integrations/status'); }
     async getDockerContainers(includeStats = true) { return this.request(`/integrations/docker?include_stats=${includeStats}`); }

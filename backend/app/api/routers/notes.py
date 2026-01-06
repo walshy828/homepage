@@ -9,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models import User, Note
-from app.schemas import NoteCreate, NoteUpdate, NoteResponse
+from app.schemas import (
+    NoteCreate, NoteUpdate, NoteResponse, 
+    BulkNoteAction, BulkDeleteAction
+)
 from app.api.dependencies import get_current_user
 
 
@@ -22,6 +25,9 @@ async def list_notes(
     search: Optional[str] = Query(None),
     is_code: Optional[bool] = Query(None),
     pinned_only: bool = Query(False),
+    is_archived: bool = Query(False),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
     show_as_widget: Optional[bool] = Query(None),
     sort_by: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
@@ -38,6 +44,15 @@ async def list_notes(
     
     if pinned_only:
         query = query.where(Note.is_pinned == True)
+    
+    if is_archived is not None:
+        query = query.where(Note.is_archived == is_archived)
+    
+    if start_date:
+        query = query.where(Note.updated_at >= start_date)
+    
+    if end_date:
+        query = query.where(Note.updated_at <= end_date)
     
     if show_as_widget is not None:
         query = query.where(Note.show_as_widget == show_as_widget)
@@ -189,3 +204,100 @@ async def view_note(
     
     await db.flush()
     return note
+
+
+@router.patch("/{note_id}/archive", response_model=NoteResponse)
+async def archive_note(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Archive a note."""
+    result = await db.execute(
+        select(Note).where(Note.id == note_id, Note.owner_id == current_user.id)
+    )
+    note = result.scalar_one_or_none()
+    
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found"
+        )
+    
+    note.is_archived = True
+    note.show_as_widget = False # Hide from dashboard if archived
+    await db.flush()
+    return note
+
+
+@router.patch("/{note_id}/unarchive", response_model=NoteResponse)
+async def unarchive_note(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Unarchive a note."""
+    result = await db.execute(
+        select(Note).where(Note.id == note_id, Note.owner_id == current_user.id)
+    )
+    note = result.scalar_one_or_none()
+    
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found"
+        )
+    
+    note.is_archived = False
+    await db.flush()
+    return note
+
+
+@router.post("/bulk-update")
+async def bulk_update_notes(
+    action: BulkNoteAction,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update multiple notes at once."""
+    result = await db.execute(
+        select(Note).where(Note.id.in_(action.note_ids), Note.owner_id == current_user.id)
+    )
+    notes = result.scalars().all()
+    
+    for note in notes:
+        if action.is_archived is not None:
+            note.is_archived = action.is_archived
+            if action.is_archived:
+                note.show_as_widget = False
+        
+        if action.category is not None:
+            note.category = action.category
+            
+        if action.color is not None:
+            note.color = action.color
+            
+        if action.tags is not None:
+            note.tags = action.tags
+            
+    await db.commit()
+    return {"status": "success", "count": len(notes)}
+
+
+@router.post("/bulk-delete", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_delete_notes(
+    action: BulkDeleteAction,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete multiple notes at once."""
+    result = await db.execute(
+        select(Note).where(Note.id.in_(action.note_ids), Note.owner_id == current_user.id)
+    )
+    notes = result.scalars().all()
+    
+    for note in notes:
+        await db.delete(note)
+        
+    await db.commit()
+    return None

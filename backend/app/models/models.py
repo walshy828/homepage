@@ -126,6 +126,7 @@ class Note(Base):
     # Organization
     category: Mapped[str] = mapped_column(String(50), default="general")
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     color: Mapped[str] = mapped_column(String(20), default="default")
     
     # Widget display
