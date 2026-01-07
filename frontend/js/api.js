@@ -21,9 +21,12 @@ class API {
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
 
-        // Add timeout to prevent hanging UI
+        // Dynamic timeout: 5 minutes for system maintenance, 8s otherwise
+        const isMaintenance = endpoint.includes('/system/');
+        const timeoutDuration = isMaintenance ? 300000 : 8000;
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+        const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
         try {
             const response = await fetch(url, { ...options, headers, signal: controller.signal });
@@ -38,6 +41,10 @@ class API {
             if (!response.ok) throw new Error(data.detail || 'API request failed');
             return data;
         } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error(`Request timed out after ${timeoutDuration / 1000}s: ${endpoint}`);
+                throw new Error('Operation timed out. For large database imports, this may still be processing in the background. Please check again in a minute.');
+            }
             console.error('API Error:', error);
             throw error;
         }
@@ -47,8 +54,12 @@ class API {
         const headers = {};
         if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min for downloads
+
         try {
-            const response = await fetch(url, { headers });
+            const response = await fetch(url, { headers, signal: controller.signal });
+            clearTimeout(timeoutId);
             if (response.status === 401) {
                 this.setToken(null);
                 window.location.href = '/login';
@@ -187,15 +198,29 @@ class API {
         const formData = new FormData();
         formData.append('file', file);
 
-        // We can't use this.request here directly because it stringifies JSON
-        const response = await fetch(`${this.baseUrl}/system/import`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${this.token}` },
-            body: formData
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || 'Import failed');
-        return data;
+        const url = `${this.baseUrl}/system/import`;
+        const headers = { 'Authorization': `Bearer ${this.token}` };
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 min for imports
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: headers,
+                body: formData,
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.detail || 'Import failed');
+            return data;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error('Database import is taking a long time. It is likely still processing on the server. Please wait a few minutes before checking your dashboard.');
+            }
+            throw error;
+        }
     }
 }
 
