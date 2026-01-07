@@ -149,6 +149,26 @@ class API {
     async updateArchive(id, data) { return this.request(`/archives/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
     async deleteArchive(id) { return this.request(`/archives/${id}`, { method: 'DELETE' }); }
     async bulkArchive(ids, action) { return this.request('/archives/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) }); }
+
+    // System / Backups
+    async createBackup() { return this.request('/system/backup', { method: 'POST' }); }
+    async getBackups() { return this.request('/system/backups'); }
+    async restoreBackup(filename) { return this.request(`/system/backups/${filename}/restore`, { method: 'POST' }); }
+    async deleteBackup(filename) { return this.request(`/system/backups/${filename}`, { method: 'DELETE' }); }
+    async importDatabase(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // We can't use this.request here directly because it stringifies JSON
+        const response = await fetch(`${this.baseUrl}/system/import`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${this.token}` },
+            body: formData
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || 'Import failed');
+        return data;
+    }
 }
 
 const api = new API();

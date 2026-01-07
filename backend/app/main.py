@@ -28,8 +28,38 @@ from app.api.routers import (
     integrations_router,
     search_router,
     archives_router,
+    system_router,
 )
 
+
+async def run_scheduled_backups():
+    """Run backups at configured intervals."""
+    import asyncio
+    from app.services.backup import BackupService
+    
+    if not settings.backup_enabled:
+        return
+        
+    backup_service = BackupService()
+    logger.info(f"Scheduled backups enabled every {settings.backup_interval_hours} hours.")
+    
+    while True:
+        try:
+            # We don't want to backup immediately on startup in case it just crashed
+            # But maybe we do? Let's wait a bit first.
+            await asyncio.sleep(60 * 5) # Wait 5 minutes after startup
+            
+            logger.info("Running scheduled database backup...")
+            filename = await backup_service.create_backup()
+            logger.info(f"Scheduled backup completed: {filename}")
+            
+            # Now wait for the next interval
+            await asyncio.sleep(settings.backup_interval_hours * 3600)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Scheduled backup failed: {e}")
+            await asyncio.sleep(3600) # Wait an hour before retrying on error
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +69,12 @@ async def lifespan(app: FastAPI):
     print(f"Starting {settings.app_name}...")
     print("----------------------------------------------------------------")
     await init_db()
+    
+    # Start background backup task
+    if settings.backup_enabled:
+        import asyncio
+        asyncio.create_task(run_scheduled_backups())
+        
     print("----------------------------------------------------------------")
     print(f"Server is running!")
     print(f"Access the dashboard at: http://0.0.0.0:8000")
@@ -79,6 +115,7 @@ app.include_router(notes_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
 app.include_router(archives_router, prefix="/api")
+app.include_router(system_router, prefix="/api")
 
 
 @app.get("/health")

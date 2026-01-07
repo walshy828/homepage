@@ -5432,7 +5432,41 @@ class App {
                     <button type="submit" class="btn btn-primary" id="change-pw-btn" style="width: 100%; margin-top: 8px;">Update Password</button>
                 </form>
             </div>
+
+            <div class="sidebar-divider" style="margin: 24px 0;"></div>
+
+            <div class="settings-section">
+                <div class="sidebar-section-title">Maintenance & Backups</div>
+                <p class="settings-description" style="margin-bottom: 8px;">Manage your database backups and application state.</p>
+                <div class="settings-description" style="margin-bottom: 20px; font-size: 0.8rem; color: var(--color-text-tertiary)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    Automated backups are enabled every 24 hours.
+                </div>
+                
+                <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="app.triggerBackup()" id="backup-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        Snapshot
+                    </button>
+                    <button class="btn btn-outline" onclick="app.exportDatabase()" id="export-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Export
+                    </button>
+                    <button class="btn btn-outline" onclick="document.getElementById('import-db-input').click()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Import
+                    </button>
+                    <input type="file" id="import-db-input" style="display:none" onchange="app.handleImportDatabase(this)" accept=".sql">
+                </div>
+
+                <div id="backups-list-container">
+                    <div class="loading-state-small"><span class="spinner-small"></span> Loading backups...</div>
+                </div>
+            </div>
         `);
+
+        // Load backups list immediately
+        this.loadBackupsList();
 
         const form = document.getElementById('change-password-form');
         if (form) {
@@ -5475,6 +5509,138 @@ class App {
         await api.updateMe({ [key]: value });
         this.user[key] = value;
         this.showToast('Setting saved');
+    }
+
+    async loadBackupsList() {
+        const container = document.getElementById('backups-list-container');
+        if (!container) return;
+
+        try {
+            const backups = await api.getBackups();
+            if (backups.length === 0) {
+                container.innerHTML = '<p class="settings-description">No backups found.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <table class="backups-table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 1px solid var(--color-border); color: var(--color-text-tertiary);">
+                            <th style="padding: 12px 8px;">Date</th>
+                            <th style="padding: 12px 8px;">Size</th>
+                            <th style="padding: 12px 8px; text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${backups.map(b => `
+                            <tr style="border-bottom: 1px solid var(--color-border-light);">
+                                <td style="padding: 12px 8px;">${new Date(b.created_at).toLocaleString()}</td>
+                                <td style="padding: 12px 8px;">${(b.size / 1024 / 1024).toFixed(2)} MB</td>
+                                <td style="padding: 12px 8px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
+                                    <button class="btn-icon circle info" onclick="window.open('/api/system/backups/${b.filename}/download', '_blank')" title="Download">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    </button>
+                                    <button class="btn-icon circle primary" onclick="app.restoreBackup('${b.filename}')" title="Restore">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                    </button>
+                                    <button class="btn-icon circle danger" onclick="app.deleteBackup('${b.filename}')" title="Delete">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        } catch (err) {
+            container.innerHTML = `<p class="text-danger">Error loading backups: ${err.message}</p>`;
+        }
+    }
+
+    async triggerBackup() {
+        const btn = document.getElementById('backup-btn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-small"></span> Backing up...';
+
+        try {
+            const res = await api.createBackup();
+            this.showToast(`Backup created: ${res.filename}`, 'success');
+            this.loadBackupsList();
+        } catch (err) {
+            this.showToast(`Backup failed: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    async exportDatabase() {
+        const btn = document.getElementById('export-btn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-small"></span> Exporting...';
+
+        try {
+            const res = await api.createBackup();
+            const downloadUrl = `/api/system/backups/${res.filename}/download`;
+            window.open(downloadUrl, '_blank');
+            this.showToast(`Database exported successfully`, 'success');
+            this.loadBackupsList();
+        } catch (err) {
+            this.showToast(`Export failed: ${err.message}`, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    async restoreBackup(filename) {
+        if (!confirm(`Are you sure you want to restore "${filename}"? ALL CURRENT DATA WILL BE OVERWRITTEN. The application might temporarily disconnect.`)) {
+            return;
+        }
+
+        try {
+            this.showToast('Restoring database...', 'info');
+            await api.restoreBackup(filename);
+            this.showToast('Database restored successfully!', 'success');
+            // We might want to reload the page as data changed significantly
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (err) {
+            this.showToast(`Restore failed: ${err.message}`, 'error');
+        }
+    }
+
+    async deleteBackup(filename) {
+        if (!confirm(`Delete backup "${filename}"?`)) return;
+        try {
+            await api.deleteBackup(filename);
+            this.showToast('Backup deleted');
+            this.loadBackupsList();
+        } catch (err) {
+            this.showToast(`Delete failed: ${err.message}`, 'error');
+        }
+    }
+
+    async handleImportDatabase(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        if (!confirm(`Are you sure you want to import "${file.name}"? ALL CURRENT DATA WILL BE OVERWRITTEN.`)) {
+            input.value = '';
+            return;
+        }
+
+        try {
+            this.showToast('Uploading and importing database...', 'info');
+            await api.importDatabase(file);
+            this.showToast('Database imported successfully!', 'success');
+            setTimeout(() => window.location.reload(), 2000);
+        } catch (err) {
+            this.showToast(`Import failed: ${err.message}`, 'error');
+        } finally {
+            input.value = '';
+        }
     }
 
     // ============================================

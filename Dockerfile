@@ -25,6 +25,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     chromium \
+    postgresql-client \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \

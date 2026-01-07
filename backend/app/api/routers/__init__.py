@@ -7,6 +7,7 @@ from app.api.routers.notes import router as notes_router
 from app.api.routers.integrations import router as integrations_router
 from app.api.routers.search import router as search_router
 from app.api.routers.archives import router as archives_router
+from app.api.routers.system import router as system_router
 
 __all__ = [
     "auth_router",
@@ -17,4 +18,5 @@ __all__ = [
     "integrations_router",
     "search_router",
     "archives_router",
+    "system_router",
 ]

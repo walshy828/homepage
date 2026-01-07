@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 30  # 30 days
     
+    # Backups
+    backup_enabled: bool = True
+    backup_interval_hours: int = 24  # Daily backup by default
+    
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/homepage.db"
     
