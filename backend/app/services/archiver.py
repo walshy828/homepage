@@ -17,8 +17,12 @@ class ContentArchiver:
         self.data_dir = data_dir
         self.screenshots_dir = os.path.join(data_dir, "screenshots")
         self.archives_dir = os.path.join(data_dir, "archives")
-        os.makedirs(self.screenshots_dir, exist_ok=True)
-        os.makedirs(self.archives_dir, exist_ok=True)
+        # Use more robust check for directories
+        try:
+            os.makedirs(self.screenshots_dir, exist_ok=True)
+            os.makedirs(self.archives_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create directories: {e}")
 
     async def archive_url(self, url: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
@@ -42,11 +46,17 @@ class ContentArchiver:
                     return None, None, None, None, f"Failed to launch browser: {str(e)}"
 
                 try:
-                    page = await browser.new_page()
+                    page = await browser.new_page(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    )
                     await page.set_viewport_size({"width": 1280, "height": 800})
                     
-                    # Navigate
-                    await page.goto(url, wait_until="networkidle", timeout=60000)
+                    # Navigate with shorter networkidle wait or load event fallback
+                    try:
+                        await page.goto(url, wait_until="load", timeout=45000)
+                    except:
+                        # Fallback if networkidle never hits
+                        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                     
                     # Get Title
                     title = await page.title()

@@ -54,12 +54,16 @@ async def process_archive_task(archive_id: int, url: str):
                 if error:
                     archive.status = "failed"
                     archive.summary = f"Error: {error}"
+                elif not pdf_path:
+                    archive.status = "failed"
+                    archive.summary = "Internal Error: PDF was not generated."
                 else:
                     archive.status = "completed"
                     archive.title = title or archive.title
                     archive.screenshot_path = screenshot
                     archive.pdf_file_path = pdf_path
                     archive.full_text = full_text
+                    archive.summary = None # Clear any previous error
             await session.commit()
         except Exception as e:
             await session.rollback()

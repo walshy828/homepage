@@ -4,6 +4,7 @@ window.ArchivesController = class ArchivesController {
         this.archives = [];
         this.filter = 'unread'; // unread, read, all
         this.searchQuery = '';
+        this.pollInterval = null;
     }
 
     async init() {
@@ -26,7 +27,7 @@ window.ArchivesController = class ArchivesController {
                         <p class="page-subtitle">Premium web archiving with full-text search</p>
                     </div>
                     <div class="header-right">
-                        <button class="btn btn-primary" onclick="window.archivesController.openAddModal()">
+                        <button class="btn btn-primary" onclick="window.archivesController.openAddModal()" type="button">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             Save Article
                         </button>
@@ -63,6 +64,26 @@ window.ArchivesController = class ArchivesController {
         }
 
         await this.fetchAndRender();
+        this.startPolling();
+    }
+
+    startPolling() {
+        this.stopPolling();
+        this.pollInterval = setInterval(() => {
+            const hasPending = this.archives.some(a => a.status === 'pending');
+            if (hasPending && this.app.currentPage === 'archives') {
+                this.fetchAndRender(true); // silent refresh
+            } else if (!hasPending) {
+                this.stopPolling();
+            }
+        }, 5000);
+    }
+
+    stopPolling() {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
     }
 
     async setFilter(filter) {
@@ -70,19 +91,44 @@ window.ArchivesController = class ArchivesController {
         this.load(); // Full reload to update filter UI
     }
 
-    async fetchAndRender() {
+    async fetchAndRender(silent = false) {
         const grid = document.getElementById('archives-grid');
-        if (grid && !grid.querySelector('.spinner')) {
+        if (grid && !grid.querySelector('.spinner') && !silent) {
             grid.innerHTML = '<div class="loading-state"><span class="spinner"></span></div>';
         }
 
         try {
             const isRead = this.filter === 'all' ? null : (this.filter === 'read');
-            this.archives = await api.getArchives(0, 50, this.searchQuery, isRead);
-            this.renderGrid();
+            const data = await api.getArchives(0, 50, this.searchQuery, isRead);
+
+            // If silent refresh, check if status changed
+            if (silent) {
+                const pendingBefore = this.archives.filter(a => a.status === 'pending').length;
+                const pendingAfter = data.filter(a => a.status === 'pending').length;
+
+                // Also check if any failed items appeared
+                const failedBefore = this.archives.filter(a => a.status === 'failed').length;
+                const failedAfter = data.filter(a => a.status === 'failed').length;
+
+                if (pendingBefore !== pendingAfter || failedBefore !== failedAfter) {
+                    this.archives = data;
+                    this.renderGrid();
+                    if (pendingAfter < pendingBefore) {
+                        this.app.showToast("Article processing updated", "success");
+                    }
+                }
+            } else {
+                this.archives = data;
+                this.renderGrid();
+            }
+
+            // Resume polling if we still have pending items
+            if (this.archives.some(a => a.status === 'pending')) {
+                this.startPolling();
+            }
         } catch (e) {
             console.error(e);
-            if (grid) grid.innerHTML = `<div class="error-state">Failed to load archives: ${e.message}</div>`;
+            if (grid && !silent) grid.innerHTML = `<div class="error-state">Failed to load archives: ${e.message}</div>`;
         }
     }
 
@@ -122,6 +168,11 @@ window.ArchivesController = class ArchivesController {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                                 </button>
                             ` : ''}
+                            ${item.status === 'failed' ? `
+                                <button class="btn-icon circle primary" onclick="event.stopPropagation(); window.archivesController.retryArchive(${item.id})" title="Retry Capture">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            ` : ''}
                             ${item.is_read ? `
                                 <button class="btn-icon circle info" onclick="event.stopPropagation(); window.archivesController.toggleRead(${item.id}, false)" title="Move back to Reading List">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m0 0H15"></path></svg>
@@ -142,6 +193,7 @@ window.ArchivesController = class ArchivesController {
                         <span class="archive-date">${new Date(item.created_at).toLocaleDateString()}</span>
                         <span class="archive-domain">${this.getDomain(item.url)}</span>
                     </div>
+                    ${item.status === 'failed' && item.summary ? `<div class="archive-error-text" style="font-size:0.75rem; color:var(--color-danger); margin-top:4px;">${item.summary}</div>` : ''}
                 </div>
             </div>
         `;
@@ -158,10 +210,25 @@ window.ArchivesController = class ArchivesController {
     async toggleRead(id, isRead) {
         try {
             await api.updateArchive(id, { is_read: isRead });
-            this.fetchAndRender();
+            this.fetchAndRender(true);
             this.app.showToast(isRead ? "Article moved to Permanent Archive" : "Moved back to Reading List", "success");
         } catch (e) {
             this.app.showToast("Error updating article: " + e.message, "error");
+        }
+    }
+
+    async retryArchive(id) {
+        try {
+            const item = this.archives.find(a => a.id === id);
+            if (!item) return;
+
+            this.app.showToast("Retrying capture...", "info");
+            // Delete and re-add for a fresh start
+            await api.createArchive(item.url, item.title);
+            await api.deleteArchive(id);
+            this.fetchAndRender();
+        } catch (e) {
+            this.app.showToast("Retry failed: " + e.message, "error");
         }
     }
 
@@ -173,9 +240,11 @@ window.ArchivesController = class ArchivesController {
                 return;
             }
             try {
-                await api.createArchive(url);
+                this.app.showToast("Saving article...", "info");
+                const newItem = await api.createArchive(url);
                 this.app.showToast("Article saved! Capturing PDF and extracting content...", "success");
-                this.fetchAndRender();
+                await this.fetchAndRender();
+                this.startPolling();
             } catch (e) {
                 this.app.showToast("Error saving article: " + e.message, "error");
             }
@@ -191,7 +260,14 @@ window.ArchivesController = class ArchivesController {
             return;
         }
         if (item.status === 'failed') {
-            this.app.showToast("This article failed to archive.", "error");
+            const errorMsg = item.summary || "Archiving failed.";
+            this.app.showToast(`${errorMsg} Opening live site instead.`, "error");
+            window.open(item.url, '_blank');
+            return;
+        }
+        if (!item.pdf_file_path) {
+            this.app.showToast("Archived document missing. Opening live link instead.", "info");
+            window.open(item.url, '_blank');
             return;
         }
 
@@ -199,7 +275,7 @@ window.ArchivesController = class ArchivesController {
         const pdfUrl = `/data/${item.pdf_file_path}`;
         window.open(pdfUrl, '_blank');
 
-        // Mark as read automatically if it's the first time
+        // Mark as read automatically
         if (!item.is_read) {
             this.toggleRead(item.id, true);
         }
