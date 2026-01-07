@@ -42,6 +42,34 @@ class API {
             throw error;
         }
     }
+    async download(endpoint, filename) {
+        const url = `${this.baseUrl}${endpoint}`;
+        const headers = {};
+        if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+
+        try {
+            const response = await fetch(url, { headers });
+            if (response.status === 401) {
+                this.setToken(null);
+                window.location.href = '/login';
+                return;
+            }
+            if (!response.ok) throw new Error('Download failed');
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename || endpoint.split('/').pop();
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            console.error('Download Error:', error);
+            throw error;
+        }
+    }
 
     async register(email, username, password) {
         return this.request('/auth/register', {

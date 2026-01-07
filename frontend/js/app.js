@@ -5608,7 +5608,7 @@ class App {
                                 <td style="padding: 12px 8px;">${new Date(b.created_at).toLocaleString()}</td>
                                 <td style="padding: 12px 8px;">${(b.size / 1024 / 1024).toFixed(2)} MB</td>
                                 <td style="padding: 12px 8px; text-align: right; display: flex; justify-content: flex-end; gap: 8px;">
-                                    <button class="btn-icon circle info" onclick="window.open('/api/system/backups/${b.filename}/download', '_blank')" title="Download">
+                                    <button class="btn-icon circle info" onclick="api.download('/system/backups/${b.filename}/download', '${b.filename}')" title="Download">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                     </button>
                                     <button class="btn-icon circle primary" onclick="app.restoreBackup('${b.filename}')" title="Restore">
@@ -5654,8 +5654,7 @@ class App {
 
         try {
             const res = await api.createBackup();
-            const downloadUrl = `/api/system/backups/${res.filename}/download`;
-            window.open(downloadUrl, '_blank');
+            await api.download(`/system/backups/${res.filename}/download`, res.filename);
             this.showToast(`Database exported successfully`, 'success');
             this.loadBackupsList();
         } catch (err) {
