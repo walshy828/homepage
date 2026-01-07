@@ -1195,36 +1195,192 @@ class App {
         this.updateLinkDraggability();
     }
 
-    async openDashboardSettings() {
-        this.showModal('Dashboard Settings', `
-            <form id="dashboard-settings-form">
-                <div class="form-group">
-                    <label class="form-label">Dashboard Name</label>
-                    <input class="input" name="name" value="${this.dashboard?.name || 'My Dashboard'}" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Icon (emoji)</label>
-                    <input class="input" name="icon" value="${this.dashboard?.icon || ''}" placeholder="🏠 or leave empty for default">
-                    <div class="emoji-picker">${['🏠', '💼', '🎮', '📊', '🎵', '📺', '💻', '🌐', '⚡', '🔧', '📁', '🎯'].map(e => `<span class="emoji-option" onclick="document.querySelector('[name=icon]').value='${e}'">${e}</span>`).join('')}</div>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width:100%">Save</button>
-            </form>
+    openSettings() {
+        this.openUnifiedSettings('appearance');
+    }
+
+    openDashboardSettings() {
+        this.openUnifiedSettings('appearance');
+    }
+
+    async openUnifiedSettings(activeTab = 'appearance') {
+        const tabs = [
+            { id: 'appearance', label: 'Appearance', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>' },
+            { id: 'profile', label: 'User Profile', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>' },
+            { id: 'system', label: 'System & Data', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>' }
+        ];
+
+        this.showModal('Settings', `
+            <div class="settings-modal-wrapper">
+                <aside class="settings-sidebar">
+                    ${tabs.map(tab => `
+                        <div class="settings-nav-item ${tab.id === activeTab ? 'active' : ''}" onclick="app.openUnifiedSettings('${tab.id}')">
+                            <span class="settings-nav-icon">${tab.icon}</span>
+                            <span>${tab.label}</span>
+                        </div>
+                    `).join('')}
+                </aside>
+                <main class="settings-content-wrapper" id="settings-tab-content">
+                    <div class="loading-state-small"><span class="spinner-small"></span></div>
+                </main>
+            </div>
         `);
-        document.getElementById('dashboard-settings-form').addEventListener('submit', async e => {
-            e.preventDefault();
-            const form = e.target;
-            await api.updateDashboard(this.dashboard.id, { name: form.name.value, icon: form.icon.value || null });
-            this.dashboard.name = form.name.value;
-            this.dashboard.icon = form.icon.value || null;
-            document.querySelector('.app-logo span').textContent = this.dashboard.name;
-            const logoContainer = document.querySelector('.app-logo');
-            if (this.dashboard.icon) {
-                logoContainer.querySelector('.app-logo-icon, .app-logo-emoji')?.remove();
-                logoContainer.insertAdjacentHTML('afterbegin', `<span class="app-logo-emoji">${this.dashboard.icon}</span>`);
-            }
-            this.closeModal();
-            this.showToast('Dashboard settings saved');
-        });
+
+        // Render the active tab content
+        this.renderSettingsTab(activeTab);
+    }
+
+    async renderSettingsTab(tabId) {
+        const container = document.getElementById('settings-tab-content');
+        if (!container) return;
+
+        let html = '';
+        if (tabId === 'appearance') {
+            html = `
+                <div class="settings-section-header">
+                    <h2 class="settings-section-title">Appearance</h2>
+                    <p class="settings-section-subtitle">Customize how your dashboard looks and feels.</p>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Theme</div>
+                    <div class="settings-card">
+                        <div class="settings-row">
+                            <div class="settings-info">
+                                <div class="settings-label">Color Scheme</div>
+                                <div class="settings-description">Choose between light, dark, or system preference.</div>
+                            </div>
+                            <select class="input" style="width:auto" onchange="app.setTheme(this.value)">
+                                <option value="system" ${localStorage.getItem('theme') === 'system' ? 'selected' : ''}>System</option>
+                                <option value="light" ${localStorage.getItem('theme') === 'light' ? 'selected' : ''}>Light</option>
+                                <option value="dark" ${localStorage.getItem('theme') === 'dark' ? 'selected' : ''}>Dark</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Dashboard Branding</div>
+                    <form id="dashboard-settings-form" class="settings-card">
+                        <div class="form-group">
+                            <label class="settings-label">Dashboard Name</label>
+                            <input class="input" name="name" value="${this.dashboard?.name || 'My Dashboard'}" required>
+                        </div>
+                        <div class="form-group" style="margin-top:20px">
+                            <label class="settings-label">Icon (emoji)</label>
+                            <input class="input" name="icon" value="${this.dashboard?.icon || ''}" placeholder="🏠 or leave empty for default">
+                            <div class="emoji-picker" style="margin-top:10px">${['🏠', '💼', '🎮', '📊', '🎵', '📺', '💻', '🌐', '⚡', '🔧', '🎯'].map(e => `<span class="emoji-option" onclick="document.querySelector('[name=icon]').value='${e}'">${e}</span>`).join('')}</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top:20px">Save Changes</button>
+                    </form>
+                </div>
+            `;
+        } else if (tabId === 'profile') {
+            html = `
+                <div class="settings-section-header">
+                    <h2 class="settings-section-title">User Profile</h2>
+                    <p class="settings-section-subtitle">Manage your personal settings and account security.</p>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">General</div>
+                    <div class="settings-card">
+                        <div class="settings-row">
+                            <div class="settings-info">
+                                <div class="settings-label">Weather Location</div>
+                                <div class="settings-description">Set your default city for weather updates.</div>
+                            </div>
+                            <input class="input" style="width:200px" value="${this.user?.default_weather_location || ''}" onchange="app.updateUserSetting('default_weather_location', this.value)">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Account Security</div>
+                    <form id="change-password-form" class="settings-card">
+                        <div class="auth-error" id="change-pw-error" style="display: none; margin-bottom: 16px;"></div>
+                        <div class="form-group">
+                            <label class="settings-label">Current Password</label>
+                            <input type="password" class="input" name="current_password" required autocomplete="current-password">
+                        </div>
+                        <div class="form-group" style="margin-top:16px">
+                            <label class="settings-label">New Password</label>
+                            <input type="password" class="input" name="new_password" required minlength="6" autocomplete="new-password">
+                        </div>
+                        <div class="form-group" style="margin-top:16px">
+                            <label class="settings-label">Confirm New Password</label>
+                            <input type="password" class="input" name="confirm_password" required minlength="6" autocomplete="new-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="change-pw-btn" style="margin-top:20px">Update Password</button>
+                    </form>
+                </div>
+            `;
+        } else if (tabId === 'system') {
+            html = `
+                <div class="settings-section-header">
+                    <h2 class="settings-section-title">System & Data</h2>
+                    <p class="settings-section-subtitle">Manage backups, data exports, and system maintenance.</p>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Data Management</div>
+                    <div class="settings-card">
+                        <div class="settings-info" style="margin-bottom:20px">
+                            <div class="settings-label">Automated Backups</div>
+                            <div class="settings-description">Your database is automatically backed up every 24 hours.</div>
+                        </div>
+                        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                            <button class="btn btn-primary" onclick="app.triggerBackup()" id="backup-btn">Snapshot</button>
+                            <button class="btn btn-outline" onclick="app.exportDatabase()" id="export-btn">Export</button>
+                            <button class="btn btn-outline" onclick="document.getElementById('import-db-input').click()">Import</button>
+                            <input type="file" id="import-db-input" style="display:none" onchange="app.handleImportDatabase(this)" accept=".sql">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <div class="settings-group-title">Backup History</div>
+                    <div id="backups-list-container">
+                        <div class="loading-state-small"><span class="spinner-small"></span></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
+
+        // Attach listeners
+        if (tabId === 'appearance') {
+            const form = document.getElementById('dashboard-settings-form');
+            form.addEventListener('submit', async e => {
+                e.preventDefault();
+                const btn = e.target.querySelector('button[type=submit]');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-small"></span> Saving...';
+
+                try {
+                    await api.updateDashboard(this.dashboard.id, { name: form.name.value, icon: form.icon.value || null });
+                    this.dashboard.name = form.name.value;
+                    this.dashboard.icon = form.icon.value || null;
+                    document.querySelector('.app-logo span').textContent = this.dashboard.name;
+                    const logoContainer = document.querySelector('.app-logo');
+                    if (this.dashboard.icon) {
+                        logoContainer.querySelector('.app-logo-icon, .app-logo-emoji')?.remove();
+                        logoContainer.insertAdjacentHTML('afterbegin', `<span class="app-logo-emoji">${this.dashboard.icon}</span>`);
+                    }
+                    this.showToast('Dashboard branding updated');
+                } catch (err) {
+                    this.showToast('Failed to save dashboard settings', 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Save Changes';
+                }
+            });
+        } else if (tabId === 'profile') {
+            document.getElementById('change-password-form').addEventListener('submit', (e) => this.handleChangePassword(e));
+        } else if (tabId === 'system') {
+            this.loadBackupsList();
+        }
     }
 
     async showDashboard() {
@@ -5386,93 +5542,6 @@ class App {
         });
     }
 
-    openSettings() {
-        this.showModal('User Settings', `
-            <div class="settings-section">
-                <div class="sidebar-section-title" style="margin-top: 0;">General</div>
-                <div class="settings-row">
-                    <div>
-                        <div class="settings-label">Theme</div>
-                        <div class="settings-description">Choose your preferred color scheme</div>
-                    </div>
-                    <select class="input" style="width:auto" onchange="app.setTheme(this.value)">
-                        <option value="system" ${localStorage.getItem('theme') === 'system' ? 'selected' : ''}>System</option>
-                        <option value="light" ${localStorage.getItem('theme') === 'light' ? 'selected' : ''}>Light</option>
-                        <option value="dark" ${localStorage.getItem('theme') === 'dark' ? 'selected' : ''}>Dark</option>
-                    </select>
-                </div>
-                <div class="settings-row">
-                    <div>
-                        <div class="settings-label">Weather Location</div>
-                        <div class="settings-description">Default location for weather widgets</div>
-                    </div>
-                    <input class="input" style="width:200px" value="${this.user?.default_weather_location || ''}" onchange="app.updateUserSetting('default_weather_location', this.value)">
-                </div>
-            </div>
-            
-            <div class="sidebar-divider" style="margin: 24px 0;"></div>
-            
-            <div class="settings-section">
-                <div class="sidebar-section-title">Account Security</div>
-                <p class="settings-description" style="margin-bottom: 20px;">Update your password regularly to keep your account secure.</p>
-                <form id="change-password-form">
-                    <div class="auth-error" id="change-pw-error" style="display: none; margin-bottom: 16px;"></div>
-                    <div class="form-group">
-                        <label class="form-label">Current Password</label>
-                        <input type="password" class="input" name="current_password" required autocomplete="current-password">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">New Password</label>
-                        <input type="password" class="input" name="new_password" required minlength="6" autocomplete="new-password">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Confirm New Password</label>
-                        <input type="password" class="input" name="confirm_password" required minlength="6" autocomplete="new-password">
-                    </div>
-                    <button type="submit" class="btn btn-primary" id="change-pw-btn" style="width: 100%; margin-top: 8px;">Update Password</button>
-                </form>
-            </div>
-
-            <div class="sidebar-divider" style="margin: 24px 0;"></div>
-
-            <div class="settings-section">
-                <div class="sidebar-section-title">Maintenance & Backups</div>
-                <p class="settings-description" style="margin-bottom: 8px;">Manage your database backups and application state.</p>
-                <div class="settings-description" style="margin-bottom: 20px; font-size: 0.8rem; color: var(--color-text-tertiary)">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    Automated backups are enabled every 24 hours.
-                </div>
-                
-                <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
-                    <button class="btn btn-primary" onclick="app.triggerBackup()" id="backup-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        Snapshot
-                    </button>
-                    <button class="btn btn-outline" onclick="app.exportDatabase()" id="export-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Export
-                    </button>
-                    <button class="btn btn-outline" onclick="document.getElementById('import-db-input').click()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        Import
-                    </button>
-                    <input type="file" id="import-db-input" style="display:none" onchange="app.handleImportDatabase(this)" accept=".sql">
-                </div>
-
-                <div id="backups-list-container">
-                    <div class="loading-state-small"><span class="spinner-small"></span> Loading backups...</div>
-                </div>
-            </div>
-        `);
-
-        // Load backups list immediately
-        this.loadBackupsList();
-
-        const form = document.getElementById('change-password-form');
-        if (form) {
-            form.addEventListener('submit', (e) => this.handleChangePassword(e));
-        }
-    }
 
     async handleChangePassword(e) {
         e.preventDefault();
