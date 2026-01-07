@@ -934,6 +934,90 @@
     grid-column: 1 / -1;
 }
 
+.archive-filters {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.archive-search {
+    position: relative;
+    flex: 1;
+    min-width: 250px;
+}
+
+.archive-search input {
+    width: 100%;
+    padding: 10px 16px 10px 40px;
+    border-radius: 12px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.archive-search input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.archive-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-tertiary);
+    pointer-events: none;
+}
+
+.filter-chip {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    transition: all 0.2s ease;
+}
+
+.filter-chip:hover {
+    background: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+}
+
+.filter-chip.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.archive-card.read {
+    opacity: 0.8;
+}
+
+.archive-card.read:hover {
+    opacity: 1;
+}
+
+.read-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 4px 8px;
+    background: rgba(16, 185, 129, 0.9);
+    color: white;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    z-index: 2;
+}
+
 /* ==================== Clock Widget ==================== */
 .clock-widget .clock-display {
     text-align: center;

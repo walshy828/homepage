@@ -27,6 +27,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
       - ./frontend:/app/static
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

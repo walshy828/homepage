@@ -20,31 +20,29 @@ class ContentArchiver:
         os.makedirs(self.screenshots_dir, exist_ok=True)
         os.makedirs(self.archives_dir, exist_ok=True)
 
-    async def archive_url(self, url: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    async def archive_url(self, url: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
         """
-        Archives a URL: Takes a screenshot and extracts content.
-        Returns: (screenshot_path, content_path, title, error_message)
+        Archives a URL: Takes a screenshot, generates a PDF, and extracts text.
+        Returns: (screenshot_path, pdf_path, full_text, title, error_message)
         """
         if not async_playwright:
-            return None, None, None, "Playwright not installed"
+            return None, None, None, None, "Playwright not installed"
 
         screenshot_path = None
-        content_path = None
+        pdf_path = None
+        full_text = None
         title = None
         error = None
 
         try:
             async with async_playwright() as p:
-                # Launch browser
-                # Note: In docker, we might need specific args like --no-sandbox
                 try:
                     browser = await p.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
                 except Exception as e:
-                    return None, None, None, f"Failed to launch browser: {str(e)}"
+                    return None, None, None, None, f"Failed to launch browser: {str(e)}"
 
                 try:
                     page = await browser.new_page()
-                    # Set viewport for a good screenshot
                     await page.set_viewport_size({"width": 1280, "height": 800})
                     
                     # Navigate
@@ -58,40 +56,26 @@ class ContentArchiver:
                     # Generate IDs
                     file_id = str(uuid.uuid4())
                     
-                    # Screenshot
+                    # 1. Screenshot for preview
                     screenshot_filename = f"{file_id}.png"
                     abs_screenshot_path = os.path.join(self.screenshots_dir, screenshot_filename)
-                    await page.screenshot(path=abs_screenshot_path, full_page=False) # Not full page to save size, or maybe full page? let's do standard view
+                    await page.screenshot(path=abs_screenshot_path, full_page=False)
                     
-                    # Content (HTML)
-                    content = await page.content()
+                    # 2. PDF for viewing
+                    pdf_filename = f"{file_id}.pdf"
+                    abs_pdf_path = os.path.join(self.archives_dir, pdf_filename)
+                    await page.pdf(path=abs_pdf_path, format="A4", print_background=True)
                     
-                    # Clean content (Optional: use Readability logic here, but for now exact HTML)
-                    # Let's do a simple cleanup with BS4 to remove scripts for safety
-                    soup = BeautifulSoup(content, 'html.parser')
-                    for script in soup(["script", "style", "iframe", "noscript", "svg"]):
-                        script.decompose()
+                    # 3. Extract text for search (from PDF if possible, or directly from page)
+                    # Extracting from page is easier and more accurate for web content
+                    full_text = await page.evaluate("() => document.body.innerText")
                     
-                    # Extract text only for "Reader Mode" or keep HTML?
-                    # Keeping simplified HTML is better for formatting.
+                    # Fallback or additional extraction from PDF if needed (user requested OCR/PDF extraction)
+                    # For now, page.evaluate is perfect for searchable text.
                     
-                    # Extract main content using heuristics (simple version)
-                    # Ideally use readability-lxml, but let's just save the body
-                    body = soup.find('body')
-                    if body:
-                        clean_content = str(body)
-                    else:
-                        clean_content = str(soup)
-                    
-                    content_filename = f"{file_id}.html"
-                    abs_content_path = os.path.join(self.archives_dir, content_filename)
-                    
-                    with open(abs_content_path, "w", encoding="utf-8") as f:
-                        f.write(clean_content)
-                    
-                    # Return relative paths for DB (relative to data dir)
+                    # Return relative paths
                     screenshot_path = f"screenshots/{screenshot_filename}"
-                    content_path = f"archives/{content_filename}"
+                    pdf_path = f"archives/{pdf_filename}"
                     
                 except Exception as e:
                     error = str(e)
@@ -99,7 +83,6 @@ class ContentArchiver:
                 finally:
                     await browser.close()
         except Exception as e:
-             # Handle playwright crash
              error = f"Playwright error: {str(e)}"
                 
-        return screenshot_path, content_path, title, error
+        return screenshot_path, pdf_path, full_text, title, error

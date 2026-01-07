@@ -159,9 +159,11 @@ class ArchivedPage(Base):
     url: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(String(255))
     screenshot_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    content_file_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pdf_file_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    full_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, completed, failed
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

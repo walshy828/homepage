@@ -427,6 +427,10 @@ class ArchivedPageCreate(BaseModel):
     url: str
     title: Optional[str] = None
 
+class ArchivedPageUpdate(BaseModel):
+    is_read: Optional[bool] = None
+    title: Optional[str] = None
+
 class ArchivedPageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
@@ -435,8 +439,9 @@ class ArchivedPageResponse(BaseModel):
     url: str
     title: str
     screenshot_path: Optional[str]
-    content_file_path: Optional[str]
+    pdf_file_path: Optional[str]
     status: str
+    is_read: bool
     summary: Optional[str]
     created_at: datetime
     updated_at: datetime
