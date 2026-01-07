@@ -54,40 +54,55 @@ class BackupService:
         
         url = self._get_conn_params()
         
-        logger.info(f"Starting database backup to {filename}...")
+        logger.info(f"[Backup] Starting database backup to {filename}...")
         
         if url.startswith("sqlite"):
             db_path = url.split("///")[-1]
             if not os.path.isabs(db_path):
                 db_path = os.path.join(os.getcwd(), db_path)
-            subprocess.run(["cp", db_path, filepath], check=True)
-            logger.info("SQLite backup completed via file copy")
+            
+            # Use asyncio to copy file (via cat or cp)
+            process = await asyncio.create_subprocess_exec(
+                "cp", db_path, filepath,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                error = stderr.decode()
+                logger.error(f"[Backup] SQLite backup failed: {error}")
+                raise Exception(f"Backup failed: {error}")
+            
+            logger.info("[Backup] SQLite backup completed via file copy")
         else:
             clean_url, env = self._get_postgres_env(url)
             try:
-                # --clean and --if-exists ensure the restore script drops objects before creating them
-                result = subprocess.run(
-                    [
-                        "pg_dump", 
-                        "--dbname=" + clean_url, 
-                        "--file=" + filepath, 
-                        "--no-owner", 
-                        "--no-acl",
-                        "--clean",
-                        "--if-exists"
-                    ],
+                # Use non-blocking async subprocess
+                process = await asyncio.create_subprocess_exec(
+                    "pg_dump", 
+                    "--dbname=" + clean_url, 
+                    "--file=" + filepath, 
+                    "--no-owner", 
+                    "--no-acl",
+                    "--clean",
+                    "--if-exists",
                     env=env,
-                    check=True,
-                    capture_output=True,
-                    text=True
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-                logger.info(f"Postgres pg_dump completed successfully for {filename}")
-            except subprocess.CalledProcessError as e:
-                error_msg = e.stderr or str(e)
-                logger.error(f"pg_dump failed: {error_msg}")
-                raise Exception(f"Backup failed: {error_msg}")
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    error = stderr.decode()
+                    logger.error(f"[Backup] pg_dump failed (code {process.returncode}): {error}")
+                    raise Exception(f"Backup failed: {error}")
+                
+                logger.info(f"[Backup] Postgres pg_dump completed successfully for {filename}")
+            except Exception as e:
+                logger.error(f"[Backup] Exception during pg_dump: {str(e)}")
+                raise
         
-        # Run retention cleanup
+        # Run retention cleanup (can be sync since it's just os.remove)
         self.cleanup_backups()
         return filename
 
@@ -98,7 +113,7 @@ class BackupService:
             if not backups:
                 return
 
-            logger.info(f"Running retention cleanup (total backups: {len(backups)})")
+            logger.info(f"[Cleanup] Running retention cleanup (total backups: {len(backups)})")
             
             # Retention buckets
             keep_files = set()
@@ -135,11 +150,11 @@ class BackupService:
                 if b["filename"] not in keep_files:
                     try:
                         os.remove(os.path.join(self.backup_dir, b["filename"]))
-                        logger.info(f"Deleted redundant backup: {b['filename']}")
+                        logger.info(f"[Cleanup] Deleted redundant backup: {b['filename']}")
                     except Exception as e:
-                        logger.warning(f"Failed to delete {b['filename']}: {e}")
+                        logger.warning(f"[Cleanup] Failed to delete {b['filename']}: {e}")
         except Exception as e:
-            logger.error(f"Retention cleanup error: {e}")
+            logger.error(f"[Cleanup] Retention cleanup error: {e}")
 
     def list_backups(self) -> List[Dict]:
         """List all available backups."""
@@ -163,50 +178,64 @@ class BackupService:
             
             backups.sort(key=lambda x: x["created_at"], reverse=True)
         except Exception as e:
-            logger.error(f"List backups error: {e}")
+            logger.error(f"[Backup] List backups error: {e}")
         return backups
 
     async def restore_backup(self, filename: str):
         """Restore a database from a backup file."""
         filepath = os.path.join(self.backup_dir, filename)
         if not os.path.exists(filepath):
-            logger.error(f"Restore failed: File not found at {filepath}")
+            logger.error(f"[Restore] Restore failed: File not found at {filepath}")
             raise Exception("Backup file not found")
             
         url = self._get_conn_params()
-        logger.info(f"Starting restoration from {filename}...")
+        logger.info(f"[Restore] Starting restoration from {filename}...")
         
         if url.startswith("sqlite"):
             db_path = url.split("///")[-1]
             if not os.path.isabs(db_path):
                 db_path = os.path.join(os.getcwd(), db_path)
-            subprocess.run(["cp", filepath, db_path], check=True)
-            logger.info("SQLite restoration completed via file copy")
+            
+            process = await asyncio.create_subprocess_exec(
+                "cp", filepath, db_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            if process.returncode != 0:
+                error = stderr.decode()
+                logger.error(f"[Restore] SQLite restore failed: {error}")
+                raise Exception(f"Restore failed: {error}")
+            
+            logger.info("[Restore] SQLite restoration completed via file copy")
         else:
             clean_url, env = self._get_postgres_env(url)
             try:
-                # Use psql to restore .sql files
-                result = subprocess.run(
-                    [
-                        "psql", 
-                        "--dbname=" + clean_url, 
-                        "--file=" + filepath,
-                        "--set", "ON_ERROR_STOP=on"
-                    ],
+                # Use non-blocking async psql
+                process = await asyncio.create_subprocess_exec(
+                    "psql", 
+                    "--dbname=" + clean_url, 
+                    "--file=" + filepath,
+                    "--set", "ON_ERROR_STOP=on",
                     env=env,
-                    check=True,
-                    capture_output=True,
-                    text=True
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-                logger.info(f"Postgres psql restore completed successfully for {filename}")
-            except subprocess.CalledProcessError as e:
-                error_msg = e.stderr or str(e)
-                logger.error(f"psql restore failed: {error_msg}")
-                raise Exception(f"Restore failed: {error_msg}")
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode != 0:
+                    error = stderr.decode()
+                    logger.error(f"[Restore] psql restore failed (code {process.returncode}): {error}")
+                    raise Exception(f"Restore failed: {error}")
+                
+                logger.info(f"[Restore] Postgres psql restore completed successfully for {filename}")
+            except Exception as e:
+                logger.error(f"[Restore] Exception during psql restore: {str(e)}")
+                raise
 
     def delete_backup(self, filename: str):
         """Delete a backup file."""
         filepath = os.path.join(self.backup_dir, filename)
         if os.path.exists(filepath):
             os.remove(filepath)
-            logger.info(f"Deleted backup file: {filename}")
+            logger.info(f"[Backup] Deleted backup file: {filename}")

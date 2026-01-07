@@ -67,23 +67,35 @@ async def download_backup(filename: str, current_user: User = Depends(get_curren
 @router.post("/system/import")
 async def import_database(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Upload and import a database backup."""
-    logger.info(f"User {current_user.username} starting database import: {file.filename}")
-    # Save the uploaded file temporarily
+    logger.info(f"[System] Starting database import request: {file.filename} ({file.content_type})")
+    
+    # Save the uploaded file temporarily using non-blocking chunks
     temp_path = os.path.join(backup_service.backup_dir, f"upload_{file.filename}")
     try:
+        logger.info(f"[System] Saving upload to {temp_path}...")
         with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            while True:
+                chunk = await file.read(1024 * 1024) # 1MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
         
-        logger.info(f"Import file saved to {temp_path}, starting restoration...")
-        # Restore from this file
+        logger.info(f"[System] Upload saved. Size: {os.path.getsize(temp_path)} bytes. Starting restoration...")
+        
+        # Restore from this file (this is now async/non-blocking)
         await backup_service.restore_backup(os.path.basename(temp_path))
         
         # Cleanup
-        os.remove(temp_path)
-        logger.info("Import and restoration completed successfully")
-        return {"ok": True, "message": "Database imported successfully."}
-    except Exception as e:
-        logger.error(f"Database import failed: {str(e)}")
         if os.path.exists(temp_path):
             os.remove(temp_path)
+            
+        logger.info("[System] Database import and restoration completed successfully")
+        return {"ok": True, "message": "Database imported successfully."}
+    except Exception as e:
+        logger.error(f"[System] Database import failed: {str(e)}", exc_info=True)
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
         raise HTTPException(status_code=500, detail=str(e))

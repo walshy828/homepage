@@ -101,6 +101,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log every single request to debug missing logs."""
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    response = await call_next(request)
+    return response
+
 # Mount static directories
 app.mount("/css", StaticFiles(directory="static/css"), name="css")
 app.mount("/js", StaticFiles(directory="static/js"), name="js")
