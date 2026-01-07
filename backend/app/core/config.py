@@ -1,7 +1,8 @@
 """
 Homepage Dashboard - Configuration
 """
-from typing import Optional
+from typing import Optional, Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,19 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @field_validator(
+        "backup_interval_hours", 
+        "backup_retention_days", 
+        "backup_retention_weeks", 
+        "backup_retention_months", 
+        mode="before"
+    )
+    @classmethod
+    def _strip_comments(cls, v: Any) -> Any:
+        if isinstance(v, str) and "#" in v:
+            return v.split("#")[0].strip()
+        return v
     
     # Application
     app_name: str = "Homepage Dashboard"

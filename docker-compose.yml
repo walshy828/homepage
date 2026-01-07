@@ -8,7 +8,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://homepage:homepage@db:5432/homepage
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-homepage}:${POSTGRES_PASSWORD:-homepage}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-homepage}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
@@ -50,9 +50,9 @@ services:
     container_name: homepage-db
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=homepage
-      - POSTGRES_PASSWORD=homepage
-      - POSTGRES_DB=homepage
+      - POSTGRES_USER=${POSTGRES_USER:-homepage}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-homepage}
+      - POSTGRES_DB=${POSTGRES_DB:-homepage}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
