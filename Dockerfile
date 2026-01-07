@@ -22,7 +22,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Install runtime dependencies
 # Install runtime dependencies including Chromium (for dependencies) and fonts
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     curl \
     chromium \
     postgresql-client \
