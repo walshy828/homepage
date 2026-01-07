@@ -3,8 +3,10 @@ window.ArchivesController = class ArchivesController {
         this.app = app;
         this.archives = [];
         this.filter = 'unread'; // unread, read, all
+        this.timeRange = 'all'; // all, 30, 90, 365
         this.searchQuery = '';
         this.pollInterval = null;
+        this.selectedIds = new Set();
     }
 
     async init() {
@@ -15,6 +17,7 @@ window.ArchivesController = class ArchivesController {
         this.app.currentPage = 'archives'; // Update state
         window.location.hash = '#archives';
         this.app.updateNavigationState();
+        this.selectedIds.clear(); // Reset selection on page load
 
         const container = document.getElementById('main-content') || document.querySelector('.main-content');
         if (!container) return;
@@ -42,10 +45,32 @@ window.ArchivesController = class ArchivesController {
                     <div class="filter-chip ${this.filter === 'unread' ? 'active' : ''}" onclick="window.archivesController.setFilter('unread')">Reading List</div>
                     <div class="filter-chip ${this.filter === 'read' ? 'active' : ''}" onclick="window.archivesController.setFilter('read')">Finished</div>
                     <div class="filter-chip ${this.filter === 'all' ? 'active' : ''}" onclick="window.archivesController.setFilter('all')">All</div>
+                    
+                    <div class="time-filters" style="margin-left: auto;">
+                        <div class="time-chip ${this.timeRange === 'all' ? 'active' : ''}" onclick="window.archivesController.setTimeRange('all')">All Time</div>
+                        <div class="time-chip ${this.timeRange === '30' ? 'active' : ''}" onclick="window.archivesController.setTimeRange('30')">Last 30d</div>
+                        <div class="time-chip ${this.timeRange === '90' ? 'active' : ''}" onclick="window.archivesController.setTimeRange('90')">Last 90d</div>
+                        <div class="time-chip ${this.timeRange === '365' ? 'active' : ''}" onclick="window.archivesController.setTimeRange('365')">Last Year</div>
+                    </div>
                 </div>
                 
                 <div class="archives-grid" id="archives-grid">
                     <div class="loading-state"><span class="spinner"></span></div>
+                </div>
+
+                <!-- Mass Edit Toolbar -->
+                <div id="mass-edit-toolbar" class="mass-edit-toolbar">
+                    <div class="mass-edit-info">
+                        <span id="selected-count">0</span> selected
+                    </div>
+                    <div class="mass-edit-actions">
+                        <button class="btn btn-sm btn-outline" onclick="window.archivesController.bulkAction('archive')">Archive</button>
+                        <button class="btn btn-sm btn-outline" onclick="window.archivesController.bulkAction('unarchive')">Restore</button>
+                        <button class="btn btn-sm btn-danger" onclick="window.archivesController.bulkAction('delete')">Delete</button>
+                        <button class="btn btn-icon circle" onclick="window.archivesController.clearSelection()" title="Clear Selection">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -91,6 +116,11 @@ window.ArchivesController = class ArchivesController {
         this.load(); // Full reload to update filter UI
     }
 
+    async setTimeRange(range) {
+        this.timeRange = range;
+        this.load();
+    }
+
     async fetchAndRender(silent = false) {
         const grid = document.getElementById('archives-grid');
         if (grid && !grid.querySelector('.spinner') && !silent) {
@@ -99,7 +129,8 @@ window.ArchivesController = class ArchivesController {
 
         try {
             const isRead = this.filter === 'all' ? null : (this.filter === 'read');
-            const data = await api.getArchives(0, 50, this.searchQuery, isRead);
+            const days = this.timeRange === 'all' ? null : parseInt(this.timeRange);
+            const data = await api.getArchives(0, 50, this.searchQuery, isRead, days);
 
             // If silent refresh, check if status changed
             if (silent) {
@@ -154,15 +185,21 @@ window.ArchivesController = class ArchivesController {
         const statusClass = item.status;
         const statusLabel = item.status === 'completed' ? '' : `<div class="status-badge ${item.status}">${item.status}</div>`;
         const readLabel = item.is_read ? `<div class="read-badge">ARCHIVED</div>` : '';
+        const isSelected = this.selectedIds.has(item.id);
 
         return `
-            <div class="archive-card ${statusClass} ${item.is_read ? 'read' : ''}" onclick="window.archivesController.openReader(${item.id})">
+            <div id="archive-${item.id}" class="archive-card ${statusClass} ${item.is_read ? 'read' : ''} ${isSelected ? 'selected' : ''}" onclick="window.archivesController.handleCardClick(${item.id}, event)">
                 <div class="archive-preview-wrapper">
+                    <input type="checkbox" class="archive-selector" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); window.archivesController.toggleSelection(${item.id})">
                     <img src="${imageUrl}" alt="${item.title}" class="archive-preview" loading="lazy">
                     ${statusLabel}
                     ${readLabel}
                     <div class="archive-overlay">
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="archive-direct-link" onclick="event.stopPropagation(); window.open('${item.url}', '_blank')" title="Go to Source site">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            </button>
+                            <div style="width: 1px; height: 24px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
                             ${!item.is_read && item.status === 'completed' ? `
                                 <button class="btn-icon circle primary" onclick="event.stopPropagation(); window.archivesController.toggleRead(${item.id}, true)" title="Finish & Archive">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
@@ -173,14 +210,6 @@ window.ArchivesController = class ArchivesController {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
                                 </button>
                             ` : ''}
-                            ${item.is_read ? `
-                                <button class="btn-icon circle info" onclick="event.stopPropagation(); window.archivesController.toggleRead(${item.id}, false)" title="Move back to Reading List">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m0 0H15"></path></svg>
-                                </button>
-                            ` : ''}
-                            <button class="btn-icon circle info" onclick="event.stopPropagation(); window.open('${item.url}', '_blank')" title="View Live Site">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                            </button>
                             <button class="btn-icon circle danger" onclick="event.stopPropagation(); window.archivesController.deleteArchive(${item.id})" title="Delete Permanentely">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                             </button>
@@ -192,6 +221,12 @@ window.ArchivesController = class ArchivesController {
                     <div class="archive-meta">
                         <span class="archive-date">${new Date(item.created_at).toLocaleDateString()}</span>
                         <span class="archive-domain">${this.getDomain(item.url)}</span>
+                    </div>
+                    <div class="archive-footer-actions">
+                         <div class="archive-footer-btn" onclick="event.stopPropagation(); window.open('${item.url}', '_blank')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                            Direct Source
+                         </div>
                     </div>
                     ${item.status === 'failed' && item.summary ? `<div class="archive-error-text" style="font-size:0.75rem; color:var(--color-danger); margin-top:4px;">${item.summary}</div>` : ''}
                 </div>
@@ -290,6 +325,73 @@ window.ArchivesController = class ArchivesController {
                 this.app.showToast("Article deleted", "success");
             } catch (e) {
                 this.app.showToast("Error deleting: " + e.message, "error");
+            }
+        }
+    }
+
+    handleCardClick(id, event) {
+        // If we have selections, clicking a card toggles selection
+        if (this.selectedIds.size > 0) {
+            this.toggleSelection(id);
+        } else {
+            // Normal behavior: open reader
+            this.openReader(id);
+        }
+    }
+
+    toggleSelection(id) {
+        if (this.selectedIds.has(id)) {
+            this.selectedIds.delete(id);
+            document.getElementById(`archive-${id}`)?.classList.remove('selected');
+            const checkbox = document.querySelector(`#archive-${id} .archive-selector`);
+            if (checkbox) checkbox.checked = false;
+        } else {
+            this.selectedIds.add(id);
+            document.getElementById(`archive-${id}`)?.classList.add('selected');
+            const checkbox = document.querySelector(`#archive-${id} .archive-selector`);
+            if (checkbox) checkbox.checked = true;
+        }
+        this.updateMassEditToolbar();
+    }
+
+    clearSelection() {
+        this.selectedIds.clear();
+        this.archives.forEach(item => {
+            document.getElementById(`archive-${item.id}`)?.classList.remove('selected');
+            const checkbox = document.querySelector(`#archive-${item.id} .archive-selector`);
+            if (checkbox) checkbox.checked = false;
+        });
+        this.updateMassEditToolbar();
+    }
+
+    updateMassEditToolbar() {
+        const toolbar = document.getElementById('mass-edit-toolbar');
+        const countSpan = document.getElementById('selected-count');
+
+        if (this.selectedIds.size > 0) {
+            toolbar.classList.add('active');
+            if (countSpan) countSpan.textContent = this.selectedIds.size;
+        } else {
+            toolbar.classList.remove('active');
+        }
+    }
+
+    async bulkAction(action) {
+        if (this.selectedIds.size === 0) return;
+
+        const count = this.selectedIds.size;
+        let confirmMsg = `Apply "${action}" to ${count} items?`;
+        if (action === 'delete') confirmMsg = `Are you sure you want to delete ${count} items permanently?`;
+
+        if (confirm(confirmMsg)) {
+            try {
+                this.app.showToast(`Processing ${count} items...`, "info");
+                await api.bulkArchive(Array.from(this.selectedIds), action);
+                this.app.showToast(`Successfully ${action}d ${count} items`, "success");
+                this.selectedIds.clear();
+                this.fetchAndRender();
+            } catch (e) {
+                this.app.showToast(`Bulk ${action} failed: ` + e.message, "error");
             }
         }
     }

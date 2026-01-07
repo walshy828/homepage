@@ -17,15 +17,21 @@ async def get_archives(
     limit: int = 50,
     q: Optional[str] = None,
     is_read: Optional[bool] = None,
+    days: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    from sqlalchemy import or_
+    from sqlalchemy import or_, func
+    from datetime import datetime, timedelta
     query = select(ArchivedPage).where(ArchivedPage.owner_id == current_user.id)
     
     if is_read is not None:
         query = query.where(ArchivedPage.is_read == is_read)
     
+    if days is not None:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        query = query.where(ArchivedPage.created_at >= cutoff)
+        
     if q:
         search = f"%{q}%"
         query = query.where(
@@ -42,6 +48,34 @@ async def get_archives(
         .limit(limit)
     )
     return result.scalars().all()
+
+@router.post("/archives/bulk")
+async def bulk_archive_action(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import delete, update
+    ids = payload.get("ids", [])
+    action = payload.get("action") # delete, archive, unarchive
+    
+    if not ids:
+        return {"count": 0}
+        
+    if action == "delete":
+        query = delete(ArchivedPage).where(ArchivedPage.id.in_(ids), ArchivedPage.owner_id == current_user.id)
+        result = await db.execute(query)
+    elif action == "archive":
+        query = update(ArchivedPage).where(ArchivedPage.id.in_(ids), ArchivedPage.owner_id == current_user.id).values(is_read=True)
+        result = await db.execute(query)
+    elif action == "unarchive":
+        query = update(ArchivedPage).where(ArchivedPage.id.in_(ids), ArchivedPage.owner_id == current_user.id).values(is_read=False)
+        result = await db.execute(query)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+        
+    await db.commit()
+    return {"ok": True, "count": result.rowcount}
 
 async def process_archive_task(archive_id: int, url: str):
     archiver = ContentArchiver()

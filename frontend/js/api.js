@@ -138,15 +138,17 @@ class API {
     async getWeather(location) { return this.request(`/integrations/weather/${encodeURIComponent(location)}`); }
 
     // Archives / Read Later
-    async getArchives(skip = 0, limit = 50, q = null, is_read = null) {
+    async getArchives(skip = 0, limit = 50, q = null, is_read = null, days = null) {
         let endpoint = `/archives?skip=${skip}&limit=${limit}`;
         if (q) endpoint += `&q=${encodeURIComponent(q)}`;
         if (is_read !== null) endpoint += `&is_read=${is_read}`;
+        if (days !== null) endpoint += `&days=${days}`;
         return this.request(endpoint);
     }
     async createArchive(url, title = null) { return this.request('/archives', { method: 'POST', body: JSON.stringify({ url, title }) }); }
     async updateArchive(id, data) { return this.request(`/archives/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
     async deleteArchive(id) { return this.request(`/archives/${id}`, { method: 'DELETE' }); }
+    async bulkArchive(ids, action) { return this.request('/archives/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) }); }
 }
 
 const api = new API();
