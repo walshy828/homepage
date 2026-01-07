@@ -24,6 +24,11 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
       - SMTP_TLS=${SMTP_TLS:-True}
       - BASE_URL=${BASE_URL:-http://localhost:8000}
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-True}
+      - BACKUP_INTERVAL_HOURS=${BACKUP_INTERVAL_HOURS:-24}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_RETENTION_WEEKS=${BACKUP_RETENTION_WEEKS:-4}
+      - BACKUP_RETENTION_MONTHS=${BACKUP_RETENTION_MONTHS:-6}
     volumes:
       - ./data:/app/data
       - ./backend/app:/app/app

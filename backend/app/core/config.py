@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Backups
     backup_enabled: bool = True
     backup_interval_hours: int = 24  # Daily backup by default
+    backup_retention_days: int = 7    # Keep all daily backups for a week
+    backup_retention_weeks: int = 4   # Keep one weekly backup for a month
+    backup_retention_months: int = 6  # Keep one monthly backup for half a year
     
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/homepage.db"

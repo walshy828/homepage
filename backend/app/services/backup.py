@@ -45,7 +45,80 @@ class BackupService:
                 error_msg = e.stderr.decode()
                 raise Exception(f"Backup failed: {error_msg}")
         
+        # Run retention cleanup
+        self.cleanup_backups()
+        
         return filename
+
+    def cleanup_backups(self):
+        """Implement a smart retention policy for backups."""
+        from datetime import datetime, timedelta
+        import collections
+
+        backups = self.list_backups()
+        if not backups:
+            return
+
+        now = datetime.now()
+        
+        # Retention buckets
+        keep_files = set()
+        
+        # Sort backups by date (newest first)
+        sorted_backups = sorted(backups, key=lambda x: x["created_at"], reverse=True)
+        
+        # Group backups by buckets
+        daily = collections.defaultdict(list)
+        weekly = collections.defaultdict(list)
+        monthly = collections.defaultdict(list)
+        
+        for b in sorted_backups:
+            dt = datetime.fromisoformat(b["created_at"])
+            
+            # Daily bucket (date only)
+            day_key = dt.strftime("%Y-%m-%d")
+            daily[day_key].append(b["filename"])
+            
+            # Weekly bucket (year + week number)
+            week_key = dt.strftime("%Y-%U")
+            weekly[week_key].append(b["filename"])
+            
+            # Monthly bucket (year + month)
+            month_key = dt.strftime("%Y-%m")
+            monthly[month_key].append(b["filename"])
+
+        # 1. Keep ALL backups from the last N days (safest for recent work)
+        # However, the user request says "scheduled backups", usually we have one per day.
+        # Let's keep one per day for N days.
+        days_to_keep = settings.backup_retention_days
+        recent_days = sorted(daily.keys(), reverse=True)[:days_to_keep]
+        for day in recent_days:
+            keep_files.add(daily[day][0]) # Keep the latest backup from that day
+
+        # 2. Keep one backup per week for the last N weeks
+        weeks_to_keep = settings.backup_retention_weeks
+        recent_weeks = sorted(weekly.keys(), reverse=True)[:weeks_to_keep]
+        for week in recent_weeks:
+            keep_files.add(weekly[week][0])
+
+        # 3. Keep one backup per month for the last N months
+        months_to_keep = settings.backup_retention_months
+        recent_months = sorted(monthly.keys(), reverse=True)[:months_to_keep]
+        for month in recent_months:
+            keep_files.add(monthly[month][0])
+
+        # 4. Always keep the absolute latest backup no matter what
+        if sorted_backups:
+            keep_files.add(sorted_backups[0]["filename"])
+
+        # Delete any file NOT in the keep set
+        for b in backups:
+            if b["filename"] not in keep_files:
+                try:
+                    os.remove(os.path.join(self.backup_dir, b["filename"]))
+                    print(f"Cleaned up redundant backup: {b['filename']}")
+                except Exception as e:
+                    print(f"Failed to delete backup {b['filename']}: {e}")
 
     def list_backups(self) -> List[Dict]:
         """List all available backups."""
