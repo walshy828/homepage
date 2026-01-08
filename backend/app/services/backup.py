@@ -355,7 +355,7 @@ class BackupService:
             logger.info(f"[Restore] Connections terminated successfully")
     
     async def _sanitize_sql_file(self, input_path: str, output_path: str):
-        """
+        r"""
         Sanitize a SQL dump file for cross-version compatibility.
         
         Removes:
