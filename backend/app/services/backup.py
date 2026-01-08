@@ -1,11 +1,11 @@
 import os
 import asyncio
-import subprocess
 import logging
 import re
 import collections
 from datetime import datetime
 from typing import List, Dict
+from urllib.parse import urlparse, unquote
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -35,17 +35,23 @@ class BackupService:
         return settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
 
     def _get_postgres_env(self, url: str):
-        """Extract password from URL and return a clean URL + env with PGPASSWORD."""
-        # Pattern to find password in postgresql://user:pass@host...
-        match = re.search(r"postgresql://(?P<user>[^:]+):(?P<pass>[^@]+)@(?P<host>[^:/]+)(:(?P<port>\d+))?/(?P<db>.+)", url)
+        """Extract password from URL safely using urllib.parse."""
+        parsed = urlparse(url)
         env = os.environ.copy()
-        if match:
-            password = match.group("pass")
+        
+        # Extract components
+        username = parsed.username or "homepage"
+        password = unquote(parsed.password) if parsed.password else ""
+        host = parsed.hostname or "db"
+        port = parsed.port or 5432
+        db_name = parsed.path.lstrip("/") or "homepage"
+        
+        if password:
             env["PGPASSWORD"] = password
-            # Construct a URL without the password for safer tool invocation
-            clean_url = f"postgresql://{match.group('user')}@{match.group('host')}:{match.group('port') or '5432'}/{match.group('db')}"
-            return clean_url, env
-        return url, env
+            
+        # Construct a clean URL without password for psql
+        clean_url = f"postgresql://{username}@{host}:{port}/{db_name}"
+        return clean_url, env
 
     async def create_backup(self) -> str:
         """Create a new database backup."""
@@ -270,9 +276,11 @@ class BackupService:
                 if os.path.exists(sanitized_path): os.remove(sanitized_path)
                 
                 if process.returncode != 0:
-                    error = stderr.decode()
-                    logger.error(f"[Restore] psql restore failed (code {process.returncode}): {error}")
-                    raise Exception(f"Restore failed: {error}")
+                    error_out = stderr.decode()
+                    logger.error(f"[Restore] psql restore failed (code {process.returncode}): {error_out}")
+                    # Extract the most relevant part of the error for the user
+                    short_error = error_out.split('\n')[-2] if len(error_out.split('\n')) > 1 else error_out
+                    raise Exception(f"Database error during restore: {short_error}")
                 
                 logger.info(f"[Restore] Postgres psql restore completed successfully for {filename}")
             except Exception as e:
