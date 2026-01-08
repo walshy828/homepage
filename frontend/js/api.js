@@ -29,7 +29,12 @@ class API {
         const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
         try {
-            const response = await fetch(url, { ...options, headers, signal: controller.signal });
+            const response = await fetch(url, {
+                ...options,
+                headers,
+                signal: controller.signal,
+                cache: 'no-store'
+            });
             clearTimeout(timeoutId);
             if (response.status === 401) {
                 this.setToken(null);

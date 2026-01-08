@@ -1,9 +1,8 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
-from typing import List, Dict
 import os
 import shutil
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.database import get_db
 from app.models.models import User
@@ -34,25 +33,33 @@ async def list_backups(current_user: User = Depends(get_current_user)):
 @router.post("/system/backups/{filename}/restore")
 async def restore_backup(filename: str, current_user: User = Depends(get_current_user)):
     """Restore database from a specific backup file."""
-    logger.info(f"User {current_user.username} triggered restore from {filename}")
+    logger.info(f"[System] User {current_user.username} triggered restore from {filename}")
     try:
         await backup_service.restore_backup(filename)
-        logger.info(f"Database restored successfully from {filename}")
+        logger.info(f"[System] Database restored successfully from {filename}")
         return {"ok": True, "message": "Database restored successfully. Application might need a restart."}
     except Exception as e:
-        logger.error(f"Restore failed from {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[System] Restore failed from {filename}: {str(e)}", exc_info=True)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "detail": str(e)}
+        )
 
 @router.delete("/system/backups/{filename}")
 async def delete_backup(filename: str, current_user: User = Depends(get_current_user)):
     """Delete a backup file."""
-    logger.info(f"User {current_user.username} deleting backup {filename}")
+    logger.info(f"[System] User {current_user.username} deleting backup {filename}")
     try:
         backup_service.delete_backup(filename)
         return {"ok": True}
     except Exception as e:
-        logger.error(f"Failed to delete backup {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[System] Failed to delete backup {filename}: {str(e)}")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "detail": str(e)}
+        )
 
 @router.get("/system/backups/{filename}/download")
 async def download_backup(filename: str, current_user: User = Depends(get_current_user)):
@@ -96,8 +103,6 @@ async def import_database(file: UploadFile = File(...), current_user: User = Dep
         if os.path.exists(temp_path):
             try: os.remove(temp_path)
             except: pass
-        # Explicitly return JSON to avoid HTML 500s from catching-logic further up
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=500,
             content={"ok": False, "detail": str(e)}

@@ -230,14 +230,21 @@ class BackupService:
                     logger.warning(f"[Restore] Connection termination warning: {k_stderr.decode()}")
                 
                 # 2. Sanitize the SQL file (remove \restrict if present)
-                # This handles Supabase/Cloud proprietary commands that break psql
+                # We use binary mode for sanitization to prevent UnicodeDecodeErrors with generic dumps
                 sanitized_path = filepath + ".sanitized"
-                logger.info(f"[Restore] Sanitizing SQL file {filename}...")
-                with open(filepath, 'r') as f_in, open(sanitized_path, 'w') as f_out:
-                    for line in f_in:
-                        if line.startswith('\\restrict') or line.startswith('\\unrestrict'):
-                            continue
-                        f_out.write(line)
+                logger.info(f"[Restore] Sanitizing SQL file {filename} (Binary mode)...")
+                try:
+                    with open(filepath, 'rb') as f_in, open(sanitized_path, 'wb') as f_out:
+                        for line in f_in:
+                            # Standard pg_dump lines with \restrict start precisely with the backslash
+                            if line.startswith(b'\\restrict') or line.startswith(b'\\unrestrict'):
+                                continue
+                            f_out.write(line)
+                    logger.info(f"[Restore] Sanitization complete: {sanitized_path}")
+                except Exception as e:
+                    logger.error(f"[Restore] Sanitization failed: {str(e)}")
+                    if os.path.exists(sanitized_path): os.remove(sanitized_path)
+                    raise
                 
                 # 3. Use non-blocking async psql to run the restore script
                 logger.info(f"[Restore] Executing restoration script for {db_name}...")
