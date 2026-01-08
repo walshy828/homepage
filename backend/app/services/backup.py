@@ -213,40 +213,54 @@ class BackupService:
             clean_url, env = self._get_postgres_env(url)
             try:
                 # 1. Kill other connections to prevent locks during DROP/CREATE
-                # We need to connect to 'postgres' or another DB to kill connections to this one
                 db_name = clean_url.split("/")[-1]
-                admin_url = clean_url.rsplit("/", 1)[0] + "/postgres"
-                
                 logger.info(f"[Restore] Terminating existing connections to {db_name}...")
+                
+                # Connect to the target DB to kill OTHER connections
                 kill_cmd = f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"
                 
                 kill_proc = await asyncio.create_subprocess_exec(
-                    "psql", "--dbname=" + admin_url, "-c", kill_cmd,
+                    "psql", "--dbname=" + clean_url, "-c", kill_cmd,
                     env=env,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                await kill_proc.communicate() # We don't strictly check error here as 'postgres' db might not exist or auth might differ
+                k_stdout, k_stderr = await kill_proc.communicate()
+                if kill_proc.returncode != 0:
+                    logger.warning(f"[Restore] Connection termination warning: {k_stderr.decode()}")
                 
-                # 2. Use non-blocking async psql to run the restore script
+                # 2. Sanitize the SQL file (remove \restrict if present)
+                # This handles Supabase/Cloud proprietary commands that break psql
+                sanitized_path = filepath + ".sanitized"
+                logger.info(f"[Restore] Sanitizing SQL file {filename}...")
+                with open(filepath, 'r') as f_in, open(sanitized_path, 'w') as f_out:
+                    for line in f_in:
+                        if line.startswith('\\restrict') or line.startswith('\\unrestrict'):
+                            continue
+                        f_out.write(line)
+                
+                # 3. Use non-blocking async psql to run the restore script
                 logger.info(f"[Restore] Executing restoration script for {db_name}...")
                 process = await asyncio.create_subprocess_exec(
                     "psql", 
                     "--dbname=" + clean_url, 
-                    "--file=" + filepath,
+                    "--file=" + sanitized_path,
                     "--set", "ON_ERROR_STOP=on",
                     env=env,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
                 
-                # Use a timeout for the entire communication to avoid infinite hang
                 try:
-                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0) # 5 min timeout
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600.0) # 10 min timeout
                 except asyncio.TimeoutError:
                     process.kill()
-                    logger.error(f"[Restore] psql restore timed out after 5 minutes")
+                    logger.error(f"[Restore] psql restore timed out after 10 minutes")
+                    if os.path.exists(sanitized_path): os.remove(sanitized_path)
                     raise Exception("Restore timed out. The database might be too large or locked.")
+                
+                # Cleanup sanitized file
+                if os.path.exists(sanitized_path): os.remove(sanitized_path)
                 
                 if process.returncode != 0:
                     error = stderr.decode()
@@ -256,6 +270,7 @@ class BackupService:
                 logger.info(f"[Restore] Postgres psql restore completed successfully for {filename}")
             except Exception as e:
                 logger.error(f"[Restore] Exception during psql restore: {str(e)}")
+                if 'sanitized_path' in locals() and os.path.exists(sanitized_path): os.remove(sanitized_path)
                 raise
 
     def delete_backup(self, filename: str):

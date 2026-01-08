@@ -37,9 +37,19 @@ class API {
                 return null;
             }
             if (response.status === 204) return null;
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || 'API request failed');
-            return data;
+
+            if (!response.ok) {
+                let errorData;
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    errorData = await response.json();
+                } else {
+                    const text = await response.text();
+                    errorData = { detail: text.substring(0, 200) || response.statusText };
+                }
+                throw new Error(errorData.detail || `Server error: ${response.status}`);
+            }
+            return await response.json();
         } catch (error) {
             if (error.name === 'AbortError') {
                 console.error(`Request timed out after ${timeoutDuration / 1000}s: ${endpoint}`);
@@ -212,9 +222,18 @@ class API {
                 signal: controller.signal
             });
             clearTimeout(timeoutId);
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || 'Import failed');
-            return data;
+            if (!response.ok) {
+                let errorData;
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    errorData = await response.json();
+                } else {
+                    const text = await response.text();
+                    errorData = { detail: text.substring(0, 200) || response.statusText };
+                }
+                throw new Error(errorData.detail || `Server error: ${response.status}`);
+            }
+            return await response.json();
         } catch (error) {
             if (error.name === 'AbortError') {
                 throw new Error('Database import is taking a long time. It is likely still processing on the server. Please wait a few minutes before checking your dashboard.');

@@ -67,35 +67,38 @@ async def download_backup(filename: str, current_user: User = Depends(get_curren
 @router.post("/system/import")
 async def import_database(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Upload and import a database backup."""
-    logger.info(f"[System] Starting database import request: {file.filename} ({file.content_type})")
+    logger.info(f"[System] ==> New Import Request: {file.filename}")
     
-    # Save the uploaded file temporarily using non-blocking chunks
     temp_path = os.path.join(backup_service.backup_dir, f"upload_{file.filename}")
     try:
-        logger.info(f"[System] Saving upload to {temp_path}...")
+        logger.info(f"[System] Receiving chunks for {file.filename}...")
         with open(temp_path, "wb") as buffer:
+            total_size = 0
             while True:
-                chunk = await file.read(1024 * 1024) # 1MB chunks
+                chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 buffer.write(chunk)
+                total_size += len(chunk)
         
-        logger.info(f"[System] Upload saved. Size: {os.path.getsize(temp_path)} bytes. Starting restoration...")
+        logger.info(f"[System] Upload complete ({total_size} bytes). Handing off to BackupService...")
         
-        # Restore from this file (this is now async/non-blocking)
+        # This now performs termination, sanitization, and restoration
         await backup_service.restore_backup(os.path.basename(temp_path))
         
-        # Cleanup
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-        logger.info("[System] Database import and restoration completed successfully")
+        logger.info("[System] <== Import successful")
         return {"ok": True, "message": "Database imported successfully."}
     except Exception as e:
-        logger.error(f"[System] Database import failed: {str(e)}", exc_info=True)
+        logger.error(f"[System] !! Import failed: {str(e)}", exc_info=True)
         if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except:
-                pass
-        raise HTTPException(status_code=500, detail=str(e))
+            try: os.remove(temp_path)
+            except: pass
+        # Explicitly return JSON to avoid HTML 500s from catching-logic further up
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "detail": str(e)}
+        )
