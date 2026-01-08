@@ -2,6 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 import os
 import shutil
+from typing import List, Dict
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.database import get_db
