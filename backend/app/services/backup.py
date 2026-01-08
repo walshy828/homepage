@@ -212,7 +212,24 @@ class BackupService:
         else:
             clean_url, env = self._get_postgres_env(url)
             try:
-                # Use non-blocking async psql
+                # 1. Kill other connections to prevent locks during DROP/CREATE
+                # We need to connect to 'postgres' or another DB to kill connections to this one
+                db_name = clean_url.split("/")[-1]
+                admin_url = clean_url.rsplit("/", 1)[0] + "/postgres"
+                
+                logger.info(f"[Restore] Terminating existing connections to {db_name}...")
+                kill_cmd = f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"
+                
+                kill_proc = await asyncio.create_subprocess_exec(
+                    "psql", "--dbname=" + admin_url, "-c", kill_cmd,
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await kill_proc.communicate() # We don't strictly check error here as 'postgres' db might not exist or auth might differ
+                
+                # 2. Use non-blocking async psql to run the restore script
+                logger.info(f"[Restore] Executing restoration script for {db_name}...")
                 process = await asyncio.create_subprocess_exec(
                     "psql", 
                     "--dbname=" + clean_url, 
@@ -222,7 +239,14 @@ class BackupService:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                stdout, stderr = await process.communicate()
+                
+                # Use a timeout for the entire communication to avoid infinite hang
+                try:
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300.0) # 5 min timeout
+                except asyncio.TimeoutError:
+                    process.kill()
+                    logger.error(f"[Restore] psql restore timed out after 5 minutes")
+                    raise Exception("Restore timed out. The database might be too large or locked.")
                 
                 if process.returncode != 0:
                     error = stderr.decode()

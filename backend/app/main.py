@@ -104,9 +104,14 @@ app.add_middleware(
 @app.middleware("http")
 async def log_requests(request, call_next):
     """Log every single request to debug missing logs."""
-    logger.info(f"Incoming request: {request.method} {request.url.path}")
-    response = await call_next(request)
-    return response
+    logger.info(f"==> Request: {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        logger.info(f"<== Response: {request.method} {request.url.path} - Status: {response.status_code}")
+        return response
+    except Exception as e:
+        logger.error(f"xx> Request Error: {request.method} {request.url.path} - {str(e)}")
+        raise
 
 # Mount static directories
 app.mount("/css", StaticFiles(directory="static/css"), name="css")
